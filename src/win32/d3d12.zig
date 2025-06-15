@@ -805,6 +805,8 @@ pub const RENDER_TARGET_BLEND_DESC = extern struct {
     BlendOpAlpha: BLEND_OP = .ADD,
     LogicOp: LOGIC_OP = .NOOP,
     RenderTargetWriteMask: UINT8 = 0x0,
+
+    pub const default = RENDER_TARGET_BLEND_DESC{};
 };
 
 pub const BLEND_DESC = extern struct {

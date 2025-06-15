@@ -23,7 +23,7 @@ pub const LevelName = enum(u8) {
 
     pub fn next_level(level: LevelName) !LevelName {
         const i = @intFromEnum(level);
-        if (i == @typeInfo(LevelName).Enum.fields.len - 1)
+        if (i == @typeInfo(LevelName).@"enum".fields.len - 1)
             return error.LastLevel;
         return @enumFromInt(i + 1);
     }
@@ -255,7 +255,7 @@ pub fn define_and_upload_level(
         ),
         .{ .ptr = gc.shader_dheap_start_cpu.ptr +
             @as(u32, @intCast(cpu_gpu.rdh_object_buffer)) *
-            gc.shader_dheap_descriptor_size },
+                gc.shader_dheap_descriptor_size },
     );
 
     vhr(gc.command_allocators[0].Reset());

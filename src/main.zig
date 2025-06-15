@@ -13,7 +13,7 @@ const gen_level = @import("gen_level.zig");
 const gen_mesh = @import("gen_mesh.zig");
 const gen_background = @import("gen_background.zig");
 
-pub const std_options = .{
+pub const std_options = std.Options{
     .log_level = .info,
 };
 
@@ -126,7 +126,7 @@ const GameState = struct {
         var frame_state_buffer: *d3d12.IResource = undefined;
         vhr(gpu_context.device.CreateCommittedResource3(
             &.{ .Type = .DEFAULT },
-            d3d12.HEAP_FLAGS.ALLOW_ALL_BUFFERS_AND_TEXTURES,
+            .ALLOW_ALL_BUFFERS_AND_TEXTURES,
             &.{
                 .Dimension = .BUFFER,
                 .Width = @sizeOf(cpu_gpu.FrameState),
@@ -148,7 +148,7 @@ const GameState = struct {
             },
             .{ .ptr = gpu_context.shader_dheap_start_cpu.ptr +
                 @as(u32, @intCast(cpu_gpu.rdh_frame_state_buffer)) *
-                gpu_context.shader_dheap_descriptor_size },
+                    gpu_context.shader_dheap_descriptor_size },
         );
 
         var wic_factory: *wic.IImagingFactory2 = undefined;
@@ -683,12 +683,12 @@ fn create_pso(device: *GpuContext.IDevice) struct { [pso_num]*d3d12.IPipelineSta
             .RTVFormats = .{GpuContext.display_target_format} ++ .{.UNKNOWN} ** 7,
             .NumRenderTargets = 1,
             .BlendState = .{
-                .RenderTarget = .{.{
+                .RenderTarget = [_]d3d12.RENDER_TARGET_BLEND_DESC{.{
                     .RenderTargetWriteMask = 0x0f,
                     .BlendEnable = .TRUE,
                     .SrcBlend = .SRC_ALPHA,
                     .DestBlend = .INV_SRC_ALPHA,
-                }} ++ .{.{}} ** 7,
+                }} ++ [_]d3d12.RENDER_TARGET_BLEND_DESC{.{}} ** 7,
             },
             .PrimitiveTopologyType = .TRIANGLE,
             .VS = .{ .pShaderBytecode = s00_vs, .BytecodeLength = s00_vs.len },
@@ -706,12 +706,12 @@ fn create_pso(device: *GpuContext.IDevice) struct { [pso_num]*d3d12.IPipelineSta
             .RTVFormats = .{GpuContext.display_target_format} ++ .{.UNKNOWN} ** 7,
             .NumRenderTargets = 1,
             .BlendState = .{
-                .RenderTarget = .{.{
+                .RenderTarget = [_]d3d12.RENDER_TARGET_BLEND_DESC{.{
                     .RenderTargetWriteMask = 0x0f,
                     .BlendEnable = .TRUE,
                     .SrcBlend = .SRC_ALPHA,
                     .DestBlend = .INV_SRC_ALPHA,
-                }} ++ .{.{}} ** 7,
+                }} ++ [_]d3d12.RENDER_TARGET_BLEND_DESC{.{}} ** 7,
             },
             .PrimitiveTopologyType = .TRIANGLE,
             .VS = .{ .pShaderBytecode = s00_shadow_vs, .BytecodeLength = s00_shadow_vs.len },
@@ -729,9 +729,9 @@ fn create_pso(device: *GpuContext.IDevice) struct { [pso_num]*d3d12.IPipelineSta
             .RTVFormats = .{GpuContext.display_target_format} ++ .{.UNKNOWN} ** 7,
             .NumRenderTargets = 1,
             .BlendState = .{
-                .RenderTarget = .{.{
+                .RenderTarget = [_]d3d12.RENDER_TARGET_BLEND_DESC{.{
                     .RenderTargetWriteMask = 0x0f,
-                }} ++ .{.{}} ** 7,
+                }} ++ [_]d3d12.RENDER_TARGET_BLEND_DESC{.{}} ** 7,
             },
             .PrimitiveTopologyType = .TRIANGLE,
             .VS = .{ .pShaderBytecode = s01_vs, .BytecodeLength = s01_vs.len },

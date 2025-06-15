@@ -305,7 +305,7 @@ const optimal_format = WAVEFORMATEX{
 };
 
 fn load_buffer_data(allocator: std.mem.Allocator, filename: []const u8) ![]const u8 {
-    const filename_w = try std.unicode.utf8ToUtf16LeWithNull(allocator, filename);
+    const filename_w = try std.unicode.utf8ToUtf16LeAllocZ(allocator, filename);
     defer allocator.free(filename_w);
 
     var source_reader: *mf.ISourceReader = undefined;

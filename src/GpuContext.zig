@@ -284,9 +284,9 @@ pub fn present_frame(gc: *GpuContext) void {
 
     const present_flags: dxgi.PRESENT_FLAG =
         if (gc.swap_chain_present_interval == 0 and gc.swap_chain_flags.ALLOW_TEARING)
-        .{ .ALLOW_TEARING = true }
-    else
-        .{};
+            .{ .ALLOW_TEARING = true }
+        else
+            .{};
 
     vhr(gc.swap_chain.Present(gc.swap_chain_present_interval, present_flags));
     vhr(gc.command_queue.Signal(gc.frame_fence, gc.frame_fence_counter));
@@ -411,7 +411,7 @@ pub fn init(window: w32.HWND, args: struct {
         var adapter_desc: dxgi.ADAPTER_DESC2 = undefined;
         vhr(adapter.GetDesc2(&adapter_desc));
         var adapter_name_utf8: [256]u8 = undefined;
-        const index = std.unicode.utf16leToUtf8(adapter_name_utf8[0..], adapter_desc.Description[0..]) catch 0;
+        const index = std.unicode.utf16LeToUtf8(adapter_name_utf8[0..], adapter_desc.Description[0..]) catch 0;
         log.info("Adapter: {s}.", .{adapter_name_utf8[0..index]});
     }
 
