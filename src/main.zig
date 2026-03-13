@@ -10,7 +10,6 @@ const dwrite = @import("win32/dwrite.zig");
 const cpu_gpu = @cImport(@cInclude("cpu_gpu_shared.h"));
 const gen_level = @import("gen_level.zig");
 const gen_mesh = @import("gen_mesh.zig");
-const gen_background = @import("gen_background.zig");
 
 pub const std_options = std.Options{
     .log_level = .info,
@@ -75,8 +74,6 @@ const GameState = struct {
 
     pso: [pso_num]*d3d12.IPipelineState,
     pso_rs: *d3d12.IRootSignature,
-
-    background_texture: *d3d12.IResource,
 
     wic_factory: *wic.IImagingFactory2,
     dwrite_factory: *dwrite.IFactory,
@@ -219,14 +216,6 @@ const GameState = struct {
             &gpu_context,
             current_level_name,
         );
-        const background_texture = try gen_background.define_and_upload_background(
-            &gpu_context,
-            current_level_name,
-            d2d_device_context,
-            d2d_factory,
-            dwrite_factory,
-            meshes,
-        );
 
         return .{
             .allocator = allocator,
@@ -235,7 +224,6 @@ const GameState = struct {
             .frame_state_buffer = frame_state_buffer,
             .pso = pso,
             .pso_rs = pso_rs,
-            .background_texture = background_texture,
             .meshes = meshes,
             .wic_factory = wic_factory,
             .dwrite_factory = dwrite_factory,
@@ -269,7 +257,6 @@ const GameState = struct {
         _ = game.pso_rs.Release();
         _ = game.vertex_buffer.Release();
         _ = game.frame_state_buffer.Release();
-        _ = game.background_texture.Release();
 
         game.gpu_context.deinit();
 
@@ -282,19 +269,7 @@ const GameState = struct {
                 w32.Sleep(10);
                 return false;
             },
-            .resized => {
-                if (false) {
-                    _ = game.background_texture.Release();
-                    game.background_texture = try gen_background.define_and_upload_background(
-                        &game.gpu_context,
-                        game.current_level_name,
-                        game.d2d.device_context,
-                        game.d2d.factory,
-                        game.dwrite_factory,
-                        game.meshes,
-                    );
-                }
-            },
+            .resized => {},
             .unchanged => {},
         }
 
@@ -306,7 +281,25 @@ const GameState = struct {
     }
 
     fn draw(game: *GameState) void {
-        std.debug.print("hwnd: {any}\n", .{game.gpu_context.window});
+        const ctx = game.d2d.render_target;
+
+        var brush: *d2d1.ISolidColorBrush = undefined;
+        vhr(ctx.CreateSolidColorBrush(
+            &.{ .r = 1.0, .g = 0.0, .b = 0.0, .a = 1.0 },
+            null,
+            @ptrCast(&brush),
+        ));
+        defer _ = brush.Release();
+
+        ctx.BeginDraw();
+        ctx.DrawRectangle(
+            &d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = 100.0, .bottom = 0.0 },
+            @ptrCast(brush),
+            1,
+            null,
+        );
+        vhr(ctx.EndDraw(null, null));
+
         // const level = &game.current_level;
         // const gc = &game.gpu_context;
 
