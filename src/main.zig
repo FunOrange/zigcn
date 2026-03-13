@@ -85,6 +85,7 @@ const GameState = struct {
         factory: *d2d1.IFactory6,
         device: *d2d1.IDevice5,
         device_context: *d2d1.IDeviceContext5,
+        render_target: *d2d1.IHwndRenderTarget,
     },
 
     meshes: std.ArrayList(gen_mesh.Mesh),
@@ -161,7 +162,7 @@ const GameState = struct {
             @ptrCast(&d2d_factory),
         ));
 
-        const d2d_device, const d2d_device_context = blk: {
+        const d2d_device, const d2d_device_context, const render_target = blk: {
             var device11: *d3d11.IDevice = undefined;
             vhr(d3d11.CreateDevice(
                 null,
@@ -191,7 +192,23 @@ const GameState = struct {
             var d2d_device_context: *d2d1.IDeviceContext5 = undefined;
             vhr(d2d_device.CreateDeviceContext5(.{}, @ptrCast(&d2d_device_context)));
 
-            break :blk .{ d2d_device, d2d_device_context };
+            const render_target_props = d2d1.RENDER_TARGET_PROPERTIES{
+                .type = .DEFAULT,
+                .pixelFormat = .{ .format = .UNKNOWN, .alphaMode = .UNKNOWN },
+                .dpiX = 0.0,
+                .dpiY = 0.0,
+                .usage = .{},
+                .minLevel = .DEFAULT,
+            };
+            const hwnd_props = d2d1.HWND_RENDER_TARGET_PROPERTIES{
+                .hwnd = gpu_context.window,
+                .pixelSize = .{ .width = gpu_context.window_width, .height = gpu_context.window_height },
+                .presentOptions = .{},
+            };
+            var render_target: *d2d1.IHwndRenderTarget = undefined;
+            vhr(d2d_factory.CreateHwndRenderTarget(&render_target_props, &hwnd_props, @ptrCast(&render_target)));
+
+            break :blk .{ d2d_device, d2d_device_context, render_target };
         };
 
         const meshes, const vertex_buffer = try gen_mesh.define_and_upload_meshes(allocator, &gpu_context, d2d_factory);
@@ -226,6 +243,7 @@ const GameState = struct {
                 .factory = d2d_factory,
                 .device = d2d_device,
                 .device_context = d2d_device_context,
+                .render_target = render_target,
             },
             .current_level = current_level,
             .current_level_name = current_level_name,
@@ -259,8 +277,7 @@ const GameState = struct {
     }
 
     fn update(game: *GameState) bool {
-        const status = game.gpu_context.handle_window_resize();
-        switch (status) {
+        switch (game.gpu_context.handle_window_resize()) {
             .minimized => {
                 w32.Sleep(10);
                 return false;
@@ -281,359 +298,214 @@ const GameState = struct {
             .unchanged => {},
         }
 
-        _, const delta_time = update_frame_stats(game.gpu_context.window, window_name);
-
-        if (game.player_is_dead > 0.0) {
-            game.player_is_dead -= delta_time;
-
-            if (game.player_is_dead <= 0.0) {
-                game.player_is_dead = 0.0;
-
-                game.gpu_context.finish_gpu_commands();
-
-                game.current_level.deinit();
-                game.current_level = gen_level.define_and_upload_level(
-                    game.allocator,
-                    &game.gpu_context,
-                    game.current_level_name,
-                ) catch unreachable;
-            }
-            return true;
-        }
-
-        if (game.player_to_next_level > 0.0) {
-            game.player_to_next_level -= delta_time;
-
-            if (game.player_to_next_level <= 0.0) {
-                game.player_to_next_level = 0.0;
-
-                // Advance to the next level.
-                game.current_level_name = game.current_level_name.next_level() catch {
-                    _ = w32.MessageBoxA(
-                        game.gpu_context.window,
-                        "Y O U  H A V E  C O M P L E T E D  T H E  G A M E !!!",
-                        "CONGRATULATIONS",
-                        w32.MB_OK,
-                    );
-                    w32.PostQuitMessage(0);
-                    return true;
-                };
-
-                game.gpu_context.finish_gpu_commands();
-
-                game.current_level.deinit();
-                game.current_level = gen_level.define_and_upload_level(
-                    game.allocator,
-                    &game.gpu_context,
-                    game.current_level_name,
-                ) catch unreachable;
-
-                _ = game.background_texture.Release();
-                game.background_texture = gen_background.define_and_upload_background(
-                    &game.gpu_context,
-                    game.current_level_name,
-                    game.d2d.device_context,
-                    game.d2d.factory,
-                    game.dwrite_factory,
-                    game.meshes,
-                ) catch unreachable;
-            }
-            return true;
-        }
-
-        const level = &game.current_level;
-        const player = &level.objects_cpu.items[level.objects_cpu.items.len - 1];
-
-        const window_width: f32 = @floatFromInt(game.gpu_context.window_width);
-        const window_height: f32 = @floatFromInt(game.gpu_context.window_height);
-        const window_aspect = window_width / window_height;
-
-        if (is_key_down(w32.VK_RIGHT) or is_key_down('D')) {
-            player.rotation += player.rotation_speed * delta_time;
-        } else if (is_key_down(w32.VK_LEFT) or is_key_down('A')) {
-            player.rotation -= player.rotation_speed * delta_time;
-        }
-
-        player.x += @cos(player.rotation) * player.move_speed * delta_time;
-        player.y += @sin(player.rotation) * player.move_speed * delta_time;
-
-        for (level.objects_cpu.items) |*object| {
-            if (object == player) continue;
-            if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
-
-            object.rotation += object.rotation_speed;
-
-            if (object.move_speed != 0.0) {
-                object.x += @cos(object.move_direction) * object.move_speed * delta_time;
-                object.y += @sin(object.move_direction) * object.move_speed * delta_time;
-
-                if (object.x < -0.5 * gen_level.map_size_y * window_aspect or
-                    object.x > 0.5 * gen_level.map_size_y * window_aspect or
-                    object.y < 0.0 or
-                    object.y > gen_level.map_size_y)
-                {
-                    object.move_direction += std.math.pi;
-                }
-            }
-        }
-
-        if (player.x < -0.5 * gen_level.map_size_y * window_aspect) {
-            player.x = 0.5 * gen_level.map_size_y * window_aspect;
-        } else if (player.x > 0.5 * gen_level.map_size_y * window_aspect) {
-            player.x = -0.5 * gen_level.map_size_y * window_aspect;
-        }
-
-        if (player.y < 0.0) {
-            player.y = gen_level.map_size_y;
-        } else if (player.y > gen_level.map_size_y) {
-            player.y = 0.0;
-        }
-
-        for (level.objects_cpu.items) |*object| {
-            if (object == player) continue;
-            if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
-            if (object.flags & cpu_gpu.obj_flag_is_non_blocking != 0) continue;
-
-            const parent = level.objects_cpu.items[object.parent];
-
-            for (0..object.mesh_indices.len) |submesh| {
-                if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
-
-                if (game.meshes.items[object.mesh_indices[submesh]].geometry) |geometry| {
-                    var contains: w32.BOOL = .FALSE;
-                    vhr(geometry.FillContainsPoint(
-                        .{ .x = player.x, .y = player.y },
-                        &d2d1.MATRIX_3X2_F.mul(
-                            d2d1.MATRIX_3X2_F.rotation_translation(object.rotation, object.x, object.y),
-                            d2d1.MATRIX_3X2_F.rotation_translation(parent.rotation, parent.x, parent.y),
-                        ),
-                        d2d1.DEFAULT_FLATTENING_TOLERANCE,
-                        &contains,
-                    ));
-
-                    if (contains == .TRUE) {
-                        if (object.flags & cpu_gpu.obj_flag_is_food != 0) {
-                            object.flags |= cpu_gpu.obj_flag_is_dead;
-                            object.flags &= @bitCast(~cpu_gpu.obj_flag_is_food);
-
-                            level.num_food_objects -= 1;
-                            if (level.num_food_objects == 0) {
-                                game.player_to_next_level = 1.0;
-                                return true;
-                            }
-                        } else {
-                            game.player_is_dead = 1.0;
-                            return true;
-                        }
-                        break;
-                    }
-                }
-            }
-        }
+        // _, const delta_time = update_frame_stats(game.gpu_context.window, window_name);
+        // const window_width: f32 = @floatFromInt(game.gpu_context.window_width);
+        // const window_height: f32 = @floatFromInt(game.gpu_context.window_height);
 
         return true;
     }
 
     fn draw(game: *GameState) void {
-        const level = &game.current_level;
-        const gc = &game.gpu_context;
+        std.debug.print("hwnd: {any}\n", .{game.gpu_context.window});
+        // const level = &game.current_level;
+        // const gc = &game.gpu_context;
 
-        gc.begin_command_list();
+        // gc.begin_command_list();
 
-        gc.command_list.Barrier(1, &.{
-            .{
-                .Type = .BUFFER,
-                .NumBarriers = 2,
-                .u = .{
-                    .pBufferBarriers = &.{
-                        .{
-                            .SyncBefore = .{},
-                            .SyncAfter = .{ .COPY = true },
-                            .AccessBefore = .{ .NO_ACCESS = true },
-                            .AccessAfter = .{ .COPY_DEST = true },
-                            .pResource = game.frame_state_buffer,
-                        },
-                        .{
-                            .SyncBefore = .{},
-                            .SyncAfter = .{ .COPY = true },
-                            .AccessBefore = .{ .NO_ACCESS = true },
-                            .AccessAfter = .{ .COPY_DEST = true },
-                            .pResource = level.objects_gpu,
-                        },
-                    },
-                },
-            },
-        });
+        // gc.command_list.Barrier(1, &.{
+        //     .{
+        //         .Type = .BUFFER,
+        //         .NumBarriers = 2,
+        //         .u = .{
+        //             .pBufferBarriers = &.{
+        //                 .{
+        //                     .SyncBefore = .{},
+        //                     .SyncAfter = .{ .COPY = true },
+        //                     .AccessBefore = .{ .NO_ACCESS = true },
+        //                     .AccessAfter = .{ .COPY_DEST = true },
+        //                     .pResource = game.frame_state_buffer,
+        //                 },
+        //                 .{
+        //                     .SyncBefore = .{},
+        //                     .SyncAfter = .{ .COPY = true },
+        //                     .AccessBefore = .{ .NO_ACCESS = true },
+        //                     .AccessAfter = .{ .COPY_DEST = true },
+        //                     .pResource = level.objects_gpu,
+        //                 },
+        //             },
+        //         },
+        //     },
+        // });
 
-        {
-            const proj = proj: {
-                const width: f32 = @floatFromInt(gc.window_width);
-                const height: f32 = @floatFromInt(gc.window_height);
-                const aspect = width / height;
+        // {
+        //     const proj = proj: {
+        //         const width: f32 = @floatFromInt(gc.window_width);
+        //         const height: f32 = @floatFromInt(gc.window_height);
+        //         const aspect = width / height;
 
-                break :proj orthographic_off_center(
-                    -0.5 * gen_level.map_size_y * aspect,
-                    0.5 * gen_level.map_size_y * aspect,
-                    0.0,
-                    gen_level.map_size_y,
-                    0.0,
-                    1.0,
-                );
-            };
+        //         break :proj orthographic_off_center(
+        //             -0.5 * gen_level.map_size_y * aspect,
+        //             0.5 * gen_level.map_size_y * aspect,
+        //             0.0,
+        //             gen_level.map_size_y,
+        //             0.0,
+        //             1.0,
+        //         );
+        //     };
 
-            const upload_mem, const buffer, const offset = gc.allocate_upload_buffer_region(cpu_gpu.FrameState, 1);
+        //     const upload_mem, const buffer, const offset = gc.allocate_upload_buffer_region(cpu_gpu.FrameState, 1);
 
-            upload_mem[0] = .{
-                .proj = transpose(proj),
-            };
+        //     upload_mem[0] = .{
+        //         .proj = transpose(proj),
+        //     };
 
-            gc.command_list.CopyBufferRegion(
-                game.frame_state_buffer,
-                0,
-                buffer,
-                offset,
-                upload_mem.len * @sizeOf(@TypeOf(upload_mem[0])),
-            );
-        }
+        //     gc.command_list.CopyBufferRegion(
+        //         game.frame_state_buffer,
+        //         0,
+        //         buffer,
+        //         offset,
+        //         upload_mem.len * @sizeOf(@TypeOf(upload_mem[0])),
+        //     );
+        // }
 
-        {
-            const upload_mem, const buffer, const offset = gc.allocate_upload_buffer_region(
-                cpu_gpu.Object,
-                @intCast(level.objects_cpu.items.len),
-            );
+        // {
+        //     const upload_mem, const buffer, const offset = gc.allocate_upload_buffer_region(
+        //         cpu_gpu.Object,
+        //         @intCast(level.objects_cpu.items.len),
+        //     );
 
-            for (level.objects_cpu.items, 0..) |object, i| upload_mem[i] = object;
+        //     for (level.objects_cpu.items, 0..) |object, i| upload_mem[i] = object;
 
-            gc.command_list.CopyBufferRegion(
-                level.objects_gpu,
-                0,
-                buffer,
-                offset,
-                upload_mem.len * @sizeOf(@TypeOf(upload_mem[0])),
-            );
-        }
+        //     gc.command_list.CopyBufferRegion(
+        //         level.objects_gpu,
+        //         0,
+        //         buffer,
+        //         offset,
+        //         upload_mem.len * @sizeOf(@TypeOf(upload_mem[0])),
+        //     );
+        // }
 
-        gc.command_list.Barrier(1, &.{
-            .{
-                .Type = .BUFFER,
-                .NumBarriers = 2,
-                .u = .{
-                    .pBufferBarriers = &.{
-                        .{
-                            .SyncBefore = .{ .COPY = true },
-                            .SyncAfter = .{ .DRAW = true },
-                            .AccessBefore = .{ .COPY_DEST = true },
-                            .AccessAfter = .{ .CONSTANT_BUFFER = true },
-                            .pResource = game.frame_state_buffer,
-                        },
-                        .{
-                            .SyncBefore = .{ .COPY = true },
-                            .SyncAfter = .{ .DRAW = true },
-                            .AccessBefore = .{ .COPY_DEST = true },
-                            .AccessAfter = .{ .SHADER_RESOURCE = true },
-                            .pResource = level.objects_gpu,
-                        },
-                    },
-                },
-            },
-        });
+        // gc.command_list.Barrier(1, &.{
+        //     .{
+        //         .Type = .BUFFER,
+        //         .NumBarriers = 2,
+        //         .u = .{
+        //             .pBufferBarriers = &.{
+        //                 .{
+        //                     .SyncBefore = .{ .COPY = true },
+        //                     .SyncAfter = .{ .DRAW = true },
+        //                     .AccessBefore = .{ .COPY_DEST = true },
+        //                     .AccessAfter = .{ .CONSTANT_BUFFER = true },
+        //                     .pResource = game.frame_state_buffer,
+        //                 },
+        //                 .{
+        //                     .SyncBefore = .{ .COPY = true },
+        //                     .SyncAfter = .{ .DRAW = true },
+        //                     .AccessBefore = .{ .COPY_DEST = true },
+        //                     .AccessAfter = .{ .SHADER_RESOURCE = true },
+        //                     .pResource = level.objects_gpu,
+        //                 },
+        //             },
+        //         },
+        //     },
+        // });
 
-        gc.command_list.OMSetRenderTargets(1, &.{gc.display_target_descriptor()}, .TRUE, &gc.dsv_dheap_start);
-        {
-            const c = d2d1.COLOR_F.init(.RoyalBlue, 1.0);
-            gc.command_list.ClearRenderTargetView(gc.display_target_descriptor(), &.{ c.r, c.g, c.b, c.a }, 0, null);
-        }
-        gc.command_list.ClearDepthStencilView(gc.dsv_dheap_start, .{ .DEPTH = true }, 1.0, 0, 0, null);
+        // gc.command_list.OMSetRenderTargets(1, &.{gc.display_target_descriptor()}, .TRUE, &gc.dsv_dheap_start);
+        // {
+        //     const c = d2d1.COLOR_F.init(.RoyalBlue, 1.0);
+        //     gc.command_list.ClearRenderTargetView(gc.display_target_descriptor(), &.{ c.r, c.g, c.b, c.a }, 0, null);
+        // }
+        // gc.command_list.ClearDepthStencilView(gc.dsv_dheap_start, .{ .DEPTH = true }, 1.0, 0, 0, null);
 
-        gc.command_list.IASetPrimitiveTopology(.TRIANGLELIST);
-        gc.command_list.SetGraphicsRootSignature(game.pso_rs);
+        // gc.command_list.IASetPrimitiveTopology(.TRIANGLELIST);
+        // gc.command_list.SetGraphicsRootSignature(game.pso_rs);
 
-        // Draw background.
-        {
-            const mesh = &game.meshes.items[gen_mesh.Mesh.fullscreen_rect];
+        // // Draw background.
+        // {
+        //     const mesh = &game.meshes.items[gen_mesh.Mesh.fullscreen_rect];
 
-            gc.command_list.SetPipelineState(game.pso[pso_background]);
-            gc.command_list.SetGraphicsRoot32BitConstants(
-                0,
-                3,
-                &[_]u32{ mesh.first_vertex, 0, 0 },
-                0,
-            );
-            gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
-        }
+        //     gc.command_list.SetPipelineState(game.pso[pso_background]);
+        //     gc.command_list.SetGraphicsRoot32BitConstants(
+        //         0,
+        //         3,
+        //         &[_]u32{ mesh.first_vertex, 0, 0 },
+        //         0,
+        //     );
+        //     gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
+        // }
 
-        const objects = level.objects_cpu.items[0..];
+        // const objects = level.objects_cpu.items[0..];
 
-        gc.command_list.SetPipelineState(game.pso[pso_color]);
+        // gc.command_list.SetPipelineState(game.pso[pso_color]);
 
-        // Draw objects that don't cast shadows.
-        for (objects, 0..) |object, object_id| {
-            if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
-            if (object.flags & cpu_gpu.obj_flag_no_shadow == 0) continue;
+        // // Draw objects that don't cast shadows.
+        // for (objects, 0..) |object, object_id| {
+        //     if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
+        //     if (object.flags & cpu_gpu.obj_flag_no_shadow == 0) continue;
 
-            for (0..object.mesh_indices.len) |submesh| {
-                if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
+        //     for (0..object.mesh_indices.len) |submesh| {
+        //         if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
 
-                const mesh = &game.meshes.items[object.mesh_indices[submesh]];
+        //         const mesh = &game.meshes.items[object.mesh_indices[submesh]];
 
-                gc.command_list.SetGraphicsRoot32BitConstants(
-                    0,
-                    3,
-                    &[_]u32{ mesh.first_vertex, @intCast(object_id), @intCast(submesh) },
-                    0,
-                );
-                gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
-            }
-        }
+        //         gc.command_list.SetGraphicsRoot32BitConstants(
+        //             0,
+        //             3,
+        //             &[_]u32{ mesh.first_vertex, @intCast(object_id), @intCast(submesh) },
+        //             0,
+        //         );
+        //         gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
+        //     }
+        // }
 
-        // Draw shadows.
-        gc.command_list.SetPipelineState(game.pso[pso_shadow]);
+        // // Draw shadows.
+        // gc.command_list.SetPipelineState(game.pso[pso_shadow]);
 
-        for (objects, 0..) |object, object_id| {
-            if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
-            if (object.flags & cpu_gpu.obj_flag_no_shadow != 0) continue;
+        // for (objects, 0..) |object, object_id| {
+        //     if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
+        //     if (object.flags & cpu_gpu.obj_flag_no_shadow != 0) continue;
 
-            for (0..object.mesh_indices.len) |submesh| {
-                if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
+        //     for (0..object.mesh_indices.len) |submesh| {
+        //         if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
 
-                const mesh = &game.meshes.items[object.mesh_indices[submesh]];
+        //         const mesh = &game.meshes.items[object.mesh_indices[submesh]];
 
-                gc.command_list.SetGraphicsRoot32BitConstants(
-                    0,
-                    3,
-                    &[_]u32{ mesh.first_vertex, @intCast(object_id), @intCast(submesh) },
-                    0,
-                );
-                gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
-            }
-        }
+        //         gc.command_list.SetGraphicsRoot32BitConstants(
+        //             0,
+        //             3,
+        //             &[_]u32{ mesh.first_vertex, @intCast(object_id), @intCast(submesh) },
+        //             0,
+        //         );
+        //         gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
+        //     }
+        // }
 
-        // Draw objects that do cast shadows.
-        gc.command_list.SetPipelineState(game.pso[pso_color]);
+        // // Draw objects that do cast shadows.
+        // gc.command_list.SetPipelineState(game.pso[pso_color]);
 
-        for (objects, 0..) |object, object_id| {
-            if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
-            if (object.flags & cpu_gpu.obj_flag_no_shadow != 0) continue;
+        // for (objects, 0..) |object, object_id| {
+        //     if (object.flags & cpu_gpu.obj_flag_is_dead != 0) continue;
+        //     if (object.flags & cpu_gpu.obj_flag_no_shadow != 0) continue;
 
-            for (0..object.mesh_indices.len) |submesh| {
-                if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
+        //     for (0..object.mesh_indices.len) |submesh| {
+        //         if (object.mesh_indices[submesh] == gen_mesh.Mesh.invalid) continue;
 
-                const mesh = &game.meshes.items[object.mesh_indices[submesh]];
+        //         const mesh = &game.meshes.items[object.mesh_indices[submesh]];
 
-                gc.command_list.SetGraphicsRoot32BitConstants(
-                    0,
-                    3,
-                    &[_]u32{ mesh.first_vertex, @intCast(object_id), @intCast(submesh) },
-                    0,
-                );
-                gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
-            }
-        }
+        //         gc.command_list.SetGraphicsRoot32BitConstants(
+        //             0,
+        //             3,
+        //             &[_]u32{ mesh.first_vertex, @intCast(object_id), @intCast(submesh) },
+        //             0,
+        //         );
+        //         gc.command_list.DrawInstanced(mesh.num_vertices, 1, 0, 0);
+        //     }
+        // }
 
-        gc.end_command_list();
+        // gc.end_command_list();
 
-        gc.command_queue.ExecuteCommandLists(1, &.{@ptrCast(gc.command_list)});
-        gc.present_frame();
+        // gc.command_queue.ExecuteCommandLists(1, &.{@ptrCast(gc.command_list)});
+        // gc.present_frame();
     }
 };
 

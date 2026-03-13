@@ -948,6 +948,7 @@ pub const IFactory = extern struct {
     pub const CreatePathGeometry = IFactory.Methods(@This()).CreatePathGeometry;
     pub const CreateTransformedGeometry = IFactory.Methods(@This()).CreateTransformedGeometry;
     pub const CreateGeometryGroup = IFactory.Methods(@This()).CreateGeometryGroup;
+    pub const CreateHwndRenderTarget = IFactory.Methods(@This()).CreateHwndRenderTarget;
 
     pub fn Methods(comptime T: type) type {
         return extern struct {
@@ -1011,6 +1012,15 @@ pub const IFactory = extern struct {
                 return @as(*const IFactory.VTable, @ptrCast(self.__v))
                     .CreateGeometryGroup(@ptrCast(self), fill_mode, geos, num_geos, geo);
             }
+            pub inline fn CreateHwndRenderTarget(
+                self: *T,
+                render_target_properties: *const RENDER_TARGET_PROPERTIES,
+                hwnd_render_target_properties: *const HWND_RENDER_TARGET_PROPERTIES,
+                hwnd_render_target: *?*IHwndRenderTarget,
+            ) HRESULT {
+                return @as(*const IFactory.VTable, @ptrCast(self.__v))
+                    .CreateHwndRenderTarget(@ptrCast(self), render_target_properties, hwnd_render_target_properties, hwnd_render_target);
+            }
         };
     }
 
@@ -1056,7 +1066,12 @@ pub const IFactory = extern struct {
         ) callconv(WINAPI) HRESULT,
         CreateDrawingStateBlock: *anyopaque,
         CreateWicBitmapRenderTarget: *anyopaque,
-        CreateHwndRenderTarget: *anyopaque,
+        CreateHwndRenderTarget: *const fn (
+            *IFactory,
+            *const RENDER_TARGET_PROPERTIES,
+            *const HWND_RENDER_TARGET_PROPERTIES,
+            *?*IHwndRenderTarget,
+        ) callconv(WINAPI) HRESULT,
         CreateDxgiSurfaceRenderTarget: *anyopaque,
         CreateDCRenderTarget: *anyopaque,
     };
@@ -1131,6 +1146,7 @@ pub const IFactory6 = extern struct {
     pub const CreatePathGeometry = IFactory.Methods(@This()).CreatePathGeometry;
     pub const CreateTransformedGeometry = IFactory.Methods(@This()).CreateTransformedGeometry;
     pub const CreateGeometryGroup = IFactory.Methods(@This()).CreateGeometryGroup;
+    pub const CreateHwndRenderTarget = IFactory.Methods(@This()).CreateHwndRenderTarget;
 
     pub const CreateDevice5 = IFactory6.Methods(@This()).CreateDevice5;
 
@@ -1712,6 +1728,90 @@ pub const ALPHA_MODE = enum(UINT) {
     PREMULTIPLIED = 1,
     STRAIGHT = 2,
     IGNORE = 3,
+};
+
+pub const RENDER_TARGET_TYPE = enum(UINT) {
+    DEFAULT = 0,
+    SOFTWARE = 1,
+    HARDWARE = 2,
+};
+
+pub const RENDER_TARGET_USAGE = packed struct(UINT) {
+    FORCE_BITMAP_REMOTING: bool = false,
+    GDI_COMPATIBLE: bool = false,
+    __unused: u30 = 0,
+};
+
+pub const FEATURE_LEVEL = enum(UINT) {
+    DEFAULT = 0,
+    @"9" = 0x9100,
+    @"10" = 0xa000,
+};
+
+pub const RENDER_TARGET_PROPERTIES = extern struct {
+    type: RENDER_TARGET_TYPE,
+    pixelFormat: PIXEL_FORMAT,
+    dpiX: FLOAT,
+    dpiY: FLOAT,
+    usage: RENDER_TARGET_USAGE,
+    minLevel: FEATURE_LEVEL,
+};
+
+pub const PRESENT_OPTIONS = packed struct(UINT) {
+    RETAIN_CONTENTS: bool = false,
+    IMMEDIATELY: bool = false,
+    __unused: u30 = 0,
+};
+
+pub const HWND_RENDER_TARGET_PROPERTIES = extern struct {
+    hwnd: w32.HWND,
+    pixelSize: SIZE_U,
+    presentOptions: PRESENT_OPTIONS,
+};
+
+pub const IHwndRenderTarget = extern struct {
+    __v: *const VTable,
+
+    pub const QueryInterface = IUnknown.Methods(@This()).QueryInterface;
+    pub const AddRef = IUnknown.Methods(@This()).AddRef;
+    pub const Release = IUnknown.Methods(@This()).Release;
+
+    pub const CreateSolidColorBrush = IRenderTarget.Methods(@This()).CreateSolidColorBrush;
+    pub const CreateGradientStopCollection = IRenderTarget.Methods(@This()).CreateGradientStopCollection;
+    pub const CreateRadialGradientBrush = IRenderTarget.Methods(@This()).CreateRadialGradientBrush;
+    pub const DrawLine = IRenderTarget.Methods(@This()).DrawLine;
+    pub const DrawRectangle = IRenderTarget.Methods(@This()).DrawRectangle;
+    pub const FillRectangle = IRenderTarget.Methods(@This()).FillRectangle;
+    pub const DrawRoundedRectangle = IRenderTarget.Methods(@This()).DrawRoundedRectangle;
+    pub const FillRoundedRectangle = IRenderTarget.Methods(@This()).FillRoundedRectangle;
+    pub const DrawEllipse = IRenderTarget.Methods(@This()).DrawEllipse;
+    pub const FillEllipse = IRenderTarget.Methods(@This()).FillEllipse;
+    pub const DrawGeometry = IRenderTarget.Methods(@This()).DrawGeometry;
+    pub const FillGeometry = IRenderTarget.Methods(@This()).FillGeometry;
+    pub const DrawBitmap = IRenderTarget.Methods(@This()).DrawBitmap;
+    pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
+    pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
+    pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
+    pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
+    pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
+
+    pub const Resize = IHwndRenderTarget.Methods(@This()).Resize;
+
+    pub fn Methods(comptime T: type) type {
+        return extern struct {
+            pub inline fn Resize(self: *T, pixel_size: *const SIZE_U) HRESULT {
+                return @as(*const IHwndRenderTarget.VTable, @ptrCast(self.__v)).Resize(@ptrCast(self), pixel_size);
+            }
+        };
+    }
+
+    pub const VTable = extern struct {
+        base: IRenderTarget.VTable,
+        CheckWindowState: *anyopaque,
+        Resize: *const fn (*IHwndRenderTarget, *const SIZE_U) callconv(WINAPI) HRESULT,
+        GetHwnd: *anyopaque,
+    };
 };
 
 pub const BITMAP_PROPERTIES1 = extern struct {
