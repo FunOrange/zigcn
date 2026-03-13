@@ -5,7 +5,6 @@ const d3d12 = @import("win32/d3d12.zig");
 const d3d12d = @import("win32/d3d12sdklayers.zig");
 const dxgi = @import("win32/dxgi.zig");
 const d2d1 = @import("win32/d2d1.zig");
-const xa2 = @import("win32/xaudio2.zig");
 const wic = @import("win32/wincodec.zig");
 const dwrite = @import("win32/dwrite.zig");
 const cpu_gpu = @cImport(@cInclude("cpu_gpu_shared.h"));
@@ -29,7 +28,6 @@ export const D3D12SDKPath: [*:0]const u8 = ".\\d3d12\\";
 const window_name = "zig-d3d12-starter";
 
 const GpuContext = @import("GpuContext.zig");
-const AudioContext = @import("AudioContext.zig");
 const vhr = GpuContext.vhr;
 const window_clear_color: [4]f32 = .{ 1, 1, 1, 0 };
 const ds_target_format: dxgi.FORMAT = .D32_FLOAT;
@@ -71,7 +69,6 @@ const GameState = struct {
     allocator: std.mem.Allocator,
 
     gpu_context: GpuContext,
-    audio_context: AudioContext,
 
     vertex_buffer: *d3d12.IResource,
     frame_state_buffer: *d3d12.IResource,
@@ -98,8 +95,6 @@ const GameState = struct {
     current_level_name: gen_level.LevelName,
     current_level: gen_level.LevelState,
 
-    eat_sounds: [2]AudioContext.SoundHandle,
-
     fn init(allocator: std.mem.Allocator) !GameState {
         var gpu_context = GpuContext.init(
             create_window(
@@ -111,15 +106,6 @@ const GameState = struct {
                 .ds_target_format = .D32_FLOAT,
             },
         );
-
-        // If `AudioContext` initialization fails we will use "empty" context that does nothing
-        // (game will still run but without sound).
-        var audio_context = AudioContext.init(allocator) catch AudioContext{};
-
-        const eat_sounds = .{
-            audio_context.create_sound_from_file("data/sounds/tabla_tas1.flac") catch unreachable,
-            audio_context.create_sound_from_file("data/sounds/drum_bass_hard.flac") catch unreachable,
-        };
 
         const pso, const pso_rs = create_pso(gpu_context.device);
 
@@ -228,7 +214,6 @@ const GameState = struct {
         return .{
             .allocator = allocator,
             .gpu_context = gpu_context,
-            .audio_context = audio_context,
             .vertex_buffer = vertex_buffer,
             .frame_state_buffer = frame_state_buffer,
             .pso = pso,
@@ -244,14 +229,11 @@ const GameState = struct {
             },
             .current_level = current_level,
             .current_level_name = current_level_name,
-            .eat_sounds = eat_sounds,
         };
     }
 
     fn deinit(game: *GameState) void {
         game.gpu_context.finish_gpu_commands();
-
-        game.audio_context.deinit();
 
         for (game.meshes.items) |mesh| {
             if (mesh.geometry) |geometry| _ = geometry.Release();
@@ -433,9 +415,6 @@ const GameState = struct {
                         if (object.flags & cpu_gpu.obj_flag_is_food != 0) {
                             object.flags |= cpu_gpu.obj_flag_is_dead;
                             object.flags &= @bitCast(~cpu_gpu.obj_flag_is_food);
-
-                            const idx = random.uintLessThan(u32, game.eat_sounds.len);
-                            game.audio_context.play_sound(game.eat_sounds[idx], .{});
 
                             level.num_food_objects -= 1;
                             if (level.num_food_objects == 0) {
