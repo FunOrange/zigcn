@@ -3,6 +3,10 @@ const native_arch = builtin.cpu.arch;
 const std = @import("std");
 const objidl = @import("objidl.zig");
 
+pub fn vhr(hr: HRESULT) void {
+    if (hr != 0) @panic("HRESULT error!");
+}
+
 pub extern "ole32" fn CoInitializeEx(pvReserved: ?LPVOID, dwCoInit: DWORD) callconv(WINAPI) HRESULT;
 pub extern "ole32" fn CoUninitialize() callconv(WINAPI) void;
 pub extern "ole32" fn CoTaskMemAlloc(size: SIZE_T) callconv(WINAPI) ?LPVOID;
