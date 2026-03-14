@@ -1,13 +1,10 @@
 const std = @import("std");
 const w32 = @import("win32/win32.zig");
 const d3d11 = @import("win32/d3d11.zig");
-const d3d12 = @import("win32/d3d12.zig");
-const d3d12d = @import("win32/d3d12sdklayers.zig");
 const dxgi = @import("win32/dxgi.zig");
 const d2d1 = @import("win32/d2d1.zig");
 const wic = @import("win32/wincodec.zig");
 const dwrite = @import("win32/dwrite.zig");
-const cpu_gpu = @cImport(@cInclude("cpu_gpu_shared.h"));
 
 pub const std_options = std.Options{
     .log_level = .info,
