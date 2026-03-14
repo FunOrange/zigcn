@@ -29,7 +29,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var game = try GameState.init(allocator);
+    var game = try StaticContext.init(allocator);
     defer game.deinit();
 
     while (true) {
@@ -45,8 +45,11 @@ pub fn main() !void {
     }
 }
 
-const GameState = struct {
+// stuff that has static lifetime gets thrown in here
+const StaticContext = struct {
     allocator: std.mem.Allocator,
+
+    hwnd: w32.HWND,
 
     wic_factory: *wic.IImagingFactory2,
     dwrite_factory: *dwrite.IFactory,
@@ -58,7 +61,7 @@ const GameState = struct {
         render_target: *d2d1.IHwndRenderTarget,
     },
 
-    fn init(allocator: std.mem.Allocator) !GameState {
+    fn init(allocator: std.mem.Allocator) !StaticContext {
         const width = @divTrunc(w32.GetSystemMetrics(w32.SM_CXSCREEN), 2);
         const height = @divTrunc(w32.GetSystemMetrics(w32.SM_CYSCREEN), 2);
         const hwnd = create_window(width, height);
@@ -137,6 +140,7 @@ const GameState = struct {
         };
 
         return .{
+            .hwnd = hwnd,
             .allocator = allocator,
             .wic_factory = wic_factory,
             .dwrite_factory = dwrite_factory,
@@ -149,18 +153,18 @@ const GameState = struct {
         };
     }
 
-    fn deinit(game: *GameState) void {
-        _ = game.d2d.render_target.Release();
-        _ = game.d2d.device_context.Release();
-        _ = game.d2d.device.Release();
-        _ = game.d2d.factory.Release();
-        _ = game.dwrite_factory.Release();
-        _ = game.wic_factory.Release();
+    fn deinit(a: *StaticContext) void {
+        _ = a.d2d.render_target.Release();
+        _ = a.d2d.device_context.Release();
+        _ = a.d2d.device.Release();
+        _ = a.d2d.factory.Release();
+        _ = a.dwrite_factory.Release();
+        _ = a.wic_factory.Release();
 
-        game.* = undefined;
+        a.* = undefined;
     }
 
-    fn update(_: *GameState) bool {
+    fn update(_: *StaticContext) bool {
         // switch (game.gpu_context.handle_window_resize()) {
         //     .minimized => {
         //         w32.Sleep(10);
@@ -175,25 +179,82 @@ const GameState = struct {
         return true;
     }
 
-    fn draw(game: *GameState) void {
-        const ctx = game.d2d.render_target;
+    fn draw(app: *StaticContext) void {
+        const ctx = app.d2d.render_target;
+        const size = ctx.GetSize();
+        const w = size.width;
+        const h = size.height;
 
-        var brush: *d2d1.ISolidColorBrush = undefined;
+        var black: *d2d1.ISolidColorBrush = undefined;
         vhr(ctx.CreateSolidColorBrush(
-            &.{ .r = 1.0, .g = 0.0, .b = 0.0, .a = 1.0 },
+            &.{ .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
             null,
-            @ptrCast(&brush),
+            @ptrCast(&black),
         ));
-        defer _ = brush.Release();
+        defer _ = black.Release();
 
         ctx.BeginDraw();
-        ctx.DrawRectangle(
-            &d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = 100.0, .bottom = 0.0 },
-            @ptrCast(brush),
-            1,
-            null,
+        defer vhr(ctx.EndDraw(null, null));
+
+        ctx.FillRectangle(
+            &d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h },
+            @ptrCast(black),
         );
-        vhr(ctx.EndDraw(null, null));
+
+        var red: *d2d1.ISolidColorBrush = undefined;
+        vhr(ctx.CreateSolidColorBrush(
+            &.{ .r = 1.0, .g = 0.0, .b = 0.0, .a = 0.2 },
+            null,
+            @ptrCast(&red),
+        ));
+        defer _ = red.Release();
+
+        ctx.FillRectangle(
+            &d2d1.RECT_F{ .left = w * 1 / 5, .top = h * 2 / 5, .right = w * 4 / 5, .bottom = h * 3 / 5 },
+            @ptrCast(red),
+        );
+
+        var white: *d2d1.ISolidColorBrush = undefined;
+        vhr(ctx.CreateSolidColorBrush(
+            &.{ .r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0 },
+            null,
+            @ptrCast(&white),
+        ));
+        defer _ = white.Release();
+
+        var text_format: *dwrite.ITextFormat = undefined;
+        const font = std.unicode.utf8ToUtf16LeStringLiteral("Arial");
+        const locale = std.unicode.utf8ToUtf16LeStringLiteral("en-us");
+        vhr(app.dwrite_factory.CreateTextFormat(
+            font,
+            null,
+            .BOLD,
+            .NORMAL,
+            .NORMAL,
+            16.0,
+            locale,
+            @ptrCast(&text_format),
+        ));
+        defer _ = text_format.Release();
+
+        vhr(text_format.SetTextAlignment(.CENTER));
+        vhr(text_format.SetParagraphAlignment(.CENTER));
+
+        const text = std.unicode.utf8ToUtf16LeStringLiteral("Hello World");
+        ctx.DrawText(
+            text,
+            @intCast(text.len),
+            text_format,
+            &d2d1.RECT_F{
+                .left = 0.0,
+                .top = 0.0,
+                .right = w,
+                .bottom = h,
+            },
+            @ptrCast(white),
+            .{},
+            .NATURAL,
+        );
     }
 };
 
