@@ -5,6 +5,10 @@ const dxgi = @import("win32/dxgi.zig");
 const d2d1 = @import("win32/d2d1.zig");
 const wic = @import("win32/wincodec.zig");
 const dwrite = @import("win32/dwrite.zig");
+const Style = @import("ui/style.zig").Style;
+const VStack = @import("ui/vstack.zig").VStack;
+const Widget = @import("ui/widget.zig").Widget;
+const drawing = @import("drawing.zig");
 
 pub const std_options = std.Options{
     .log_level = .info,
@@ -13,7 +17,7 @@ pub const std_options = std.Options{
 export const D3D12SDKVersion: u32 = 614;
 export const D3D12SDKPath: [*:0]const u8 = ".\\d3d12\\";
 
-const window_name = "zig-d3d12-starter";
+const window_name = "app";
 
 const vhr = w32.vhr;
 // var random_state = std.Random.DefaultPrng.init(0);
@@ -29,8 +33,8 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var game = try StaticContext.init(allocator);
-    defer game.deinit();
+    var app = try StaticContext.init(allocator);
+    defer app.deinit();
 
     while (true) {
         var message = std.mem.zeroes(w32.MSG);
@@ -40,8 +44,8 @@ pub fn main() !void {
             if (message.message == w32.WM_QUIT) break;
         }
 
-        if (game.update())
-            game.draw();
+        if (app.update())
+            app.draw();
     }
 }
 
@@ -58,12 +62,12 @@ const StaticContext = struct {
         factory: *d2d1.IFactory6,
         device: *d2d1.IDevice5,
         device_context: *d2d1.IDeviceContext5,
-        render_target: *d2d1.IHwndRenderTarget,
+        drawing_context: drawing.DrawingContext,
     },
 
     fn init(allocator: std.mem.Allocator) !StaticContext {
-        const width = @divTrunc(w32.GetSystemMetrics(w32.SM_CXSCREEN), 2);
-        const height = @divTrunc(w32.GetSystemMetrics(w32.SM_CYSCREEN), 2);
+        const width = 800;
+        const height = 600;
         const hwnd = create_window(width, height);
 
         var wic_factory: *wic.IImagingFactory2 = undefined;
@@ -139,6 +143,8 @@ const StaticContext = struct {
             break :blk .{ d2d_device, d2d_device_context, d2d_hwnd_target };
         };
 
+        const drawing_context = drawing.DrawingContext.init(d2d_hwnd_target);
+
         return .{
             .hwnd = hwnd,
             .allocator = allocator,
@@ -148,13 +154,13 @@ const StaticContext = struct {
                 .factory = d2d_factory,
                 .device = d2d_device,
                 .device_context = d2d_device_context,
-                .render_target = d2d_hwnd_target,
+                .drawing_context = drawing_context,
             },
         };
     }
 
     fn deinit(a: *StaticContext) void {
-        _ = a.d2d.render_target.Release();
+        _ = a.d2d.drawing_context.deinit();
         _ = a.d2d.device_context.Release();
         _ = a.d2d.device.Release();
         _ = a.d2d.factory.Release();
@@ -180,42 +186,29 @@ const StaticContext = struct {
     }
 
     fn draw(app: *StaticContext) void {
-        const ctx = app.d2d.render_target;
-        const size = ctx.GetSize();
+        const ctx = app.d2d.drawing_context;
+        const r = ctx.r;
+        const size = r.GetSize();
         const w = size.width;
         const h = size.height;
 
-        var black: *d2d1.ISolidColorBrush = undefined;
-        vhr(ctx.CreateSolidColorBrush(
-            &.{ .r = 0.0, .g = 0.0, .b = 0.0, .a = 1.0 },
-            null,
-            @ptrCast(&black),
-        ));
-        defer _ = black.Release();
+        r.BeginDraw();
+        defer vhr(r.EndDraw(null, null));
 
-        ctx.BeginDraw();
-        defer vhr(ctx.EndDraw(null, null));
-
-        ctx.FillRectangle(
+        // background
+        r.FillRectangle(
             &d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h },
-            @ptrCast(black),
+            @ptrCast(ctx.slate900),
         );
 
-        var red: *d2d1.ISolidColorBrush = undefined;
-        vhr(ctx.CreateSolidColorBrush(
-            &.{ .r = 1.0, .g = 0.0, .b = 0.0, .a = 0.2 },
-            null,
-            @ptrCast(&red),
-        ));
-        defer _ = red.Release();
-
-        ctx.FillRectangle(
-            &d2d1.RECT_F{ .left = w * 1 / 5, .top = h * 2 / 5, .right = w * 4 / 5, .bottom = h * 3 / 5 },
-            @ptrCast(red),
-        );
+        const vstack = VStack{
+            .style = .{ .color = ctx.rose500 },
+        };
+        const vstackRect = d2d1.RECT_F{ .left = w * 1 / 5, .top = h * 2 / 5, .right = w * 4 / 5, .bottom = h * 3 / 5 };
+        vstack.render(&ctx, &vstackRect);
 
         var white: *d2d1.ISolidColorBrush = undefined;
-        vhr(ctx.CreateSolidColorBrush(
+        vhr(r.CreateSolidColorBrush(
             &.{ .r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0 },
             null,
             @ptrCast(&white),
@@ -223,7 +216,7 @@ const StaticContext = struct {
         defer _ = white.Release();
 
         var text_format: *dwrite.ITextFormat = undefined;
-        const font = std.unicode.utf8ToUtf16LeStringLiteral("Arial");
+        const font = std.unicode.utf8ToUtf16LeStringLiteral("Noto Sans JP");
         const locale = std.unicode.utf8ToUtf16LeStringLiteral("en-us");
         vhr(app.dwrite_factory.CreateTextFormat(
             font,
@@ -231,7 +224,7 @@ const StaticContext = struct {
             .BOLD,
             .NORMAL,
             .NORMAL,
-            16.0,
+            20.0,
             locale,
             @ptrCast(&text_format),
         ));
@@ -240,8 +233,8 @@ const StaticContext = struct {
         vhr(text_format.SetTextAlignment(.CENTER));
         vhr(text_format.SetParagraphAlignment(.CENTER));
 
-        const text = std.unicode.utf8ToUtf16LeStringLiteral("Hello World");
-        ctx.DrawText(
+        const text = std.unicode.utf8ToUtf16LeStringLiteral("なんでやねん");
+        r.DrawText(
             text,
             @intCast(text.len),
             text_format,
@@ -251,7 +244,7 @@ const StaticContext = struct {
                 .right = w,
                 .bottom = h,
             },
-            @ptrCast(white),
+            @ptrCast(ctx.slate50),
             .{},
             .NATURAL,
         );
@@ -303,10 +296,10 @@ fn create_window(width: i32, height: i32) w32.HWND {
     _ = w32.RegisterClassExA(&winclass);
 
     const hwnd = w32.CreateWindowExA(
-        if (@import("builtin").mode == .Debug) 0 else w32.WS_EX_TOPMOST,
+        0,
         window_name,
         window_name,
-        if (@import("builtin").mode == .Debug) w32.WS_OVERLAPPEDWINDOW else w32.WS_POPUP,
+        w32.WS_OVERLAPPEDWINDOW,
         w32.CW_USEDEFAULT,
         w32.CW_USEDEFAULT,
         width,
@@ -317,10 +310,7 @@ fn create_window(width: i32, height: i32) w32.HWND {
         null,
     ).?;
 
-    _ = w32.ShowWindow(hwnd, w32.SW_SHOWMAXIMIZED);
-
-    if (@import("builtin").mode != .Debug)
-        _ = w32.ShowCursor(.FALSE);
+    _ = w32.ShowWindow(hwnd, w32.SW_SHOWDEFAULT);
 
     return hwnd;
 }

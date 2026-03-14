@@ -137,6 +137,7 @@ pub const SM_CXSCREEN = 0;
 pub const SM_CYSCREEN = 1;
 
 pub const SW_SHOWMAXIMIZED = 3;
+pub const SW_SHOWDEFAULT = 10;
 
 pub extern "user32" fn SetProcessDPIAware() callconv(WINAPI) BOOL;
 

@@ -7,14 +7,13 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     const exe = b.addExecutable(.{
-        .name = "zig-ui",
+        .name = "app",
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
         .link_libc = false,
         .strip = if (optimize == .ReleaseFast) true else null,
     });
-    exe.rdynamic = true;
     exe.addIncludePath(b.path("src"));
 
     const build_options = b.addOptions();
