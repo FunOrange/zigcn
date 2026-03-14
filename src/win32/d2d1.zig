@@ -184,6 +184,18 @@ pub const FILL_MODE = enum(UINT) {
     WINDING = 1,
 };
 
+pub const ANTIALIAS_MODE = enum(UINT) {
+    PER_PRIMITIVE = 0,
+    ALIASED = 1,
+};
+
+pub const TEXT_ANTIALIAS_MODE = enum(UINT) {
+    DEFAULT = 0,
+    CLEARTYPE = 1,
+    GRAYSCALE = 2,
+    ALIASED = 3,
+};
+
 pub const COMBINE_MODE = enum(UINT) {
     UNION = 0,
     INTERSECT = 1,
@@ -1405,6 +1417,10 @@ pub const IRenderTarget = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -1598,6 +1614,18 @@ pub const IRenderTarget = extern struct {
             pub inline fn Clear(self: *T, color: ?*const COLOR_F) void {
                 @as(*const IRenderTarget.VTable, @ptrCast(self.__v)).Clear(@ptrCast(self), color);
             }
+            pub inline fn SetAntialiasMode(self: *T, mode: ANTIALIAS_MODE) void {
+                @as(*const IRenderTarget.VTable, @ptrCast(self.__v)).SetAntialiasMode(@ptrCast(self), mode);
+            }
+            pub inline fn GetAntialiasMode(self: *T) ANTIALIAS_MODE {
+                return @as(*const IRenderTarget.VTable, @ptrCast(self.__v)).GetAntialiasMode(@ptrCast(self));
+            }
+            pub inline fn SetTextAntialiasMode(self: *T, mode: TEXT_ANTIALIAS_MODE) void {
+                @as(*const IRenderTarget.VTable, @ptrCast(self.__v)).SetTextAntialiasMode(@ptrCast(self), mode);
+            }
+            pub inline fn GetTextAntialiasMode(self: *T) TEXT_ANTIALIAS_MODE {
+                return @as(*const IRenderTarget.VTable, @ptrCast(self.__v)).GetTextAntialiasMode(@ptrCast(self));
+            }
             pub inline fn BeginDraw(self: *T) void {
                 @as(*const IRenderTarget.VTable, @ptrCast(self.__v)).BeginDraw(@ptrCast(self));
             }
@@ -1690,10 +1718,10 @@ pub const IRenderTarget = extern struct {
         DrawGlyphRun: *anyopaque,
         SetTransform: *const fn (*T, *const MATRIX_3X2_F) callconv(WINAPI) void,
         GetTransform: *anyopaque,
-        SetAntialiasMode: *anyopaque,
-        GetAntialiasMode: *anyopaque,
-        SetTextAntialiasMode: *anyopaque,
-        GetTextAntialiasMode: *anyopaque,
+        SetAntialiasMode: *const fn (*T, ANTIALIAS_MODE) callconv(WINAPI) void,
+        GetAntialiasMode: *const fn (*T) callconv(WINAPI) ANTIALIAS_MODE,
+        SetTextAntialiasMode: *const fn (*T, TEXT_ANTIALIAS_MODE) callconv(WINAPI) void,
+        GetTextAntialiasMode: *const fn (*T) callconv(WINAPI) TEXT_ANTIALIAS_MODE,
         SetTextRenderingParams: *anyopaque,
         GetTextRenderingParams: *anyopaque,
         SetTags: *anyopaque,
@@ -1792,6 +1820,10 @@ pub const IHwndRenderTarget = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -1908,6 +1940,10 @@ pub const IDeviceContext = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -2047,6 +2083,10 @@ pub const IDeviceContext1 = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -2190,6 +2230,10 @@ pub const IDeviceContext2 = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -2269,6 +2313,10 @@ pub const IDeviceContext3 = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -2307,6 +2355,10 @@ pub const IDeviceContext4 = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;
@@ -2373,6 +2425,10 @@ pub const IDeviceContext5 = extern struct {
     pub const DrawText = IRenderTarget.Methods(@This()).DrawText;
     pub const SetTransform = IRenderTarget.Methods(@This()).SetTransform;
     pub const Clear = IRenderTarget.Methods(@This()).Clear;
+    pub const SetAntialiasMode = IRenderTarget.Methods(@This()).SetAntialiasMode;
+    pub const GetAntialiasMode = IRenderTarget.Methods(@This()).GetAntialiasMode;
+    pub const SetTextAntialiasMode = IRenderTarget.Methods(@This()).SetTextAntialiasMode;
+    pub const GetTextAntialiasMode = IRenderTarget.Methods(@This()).GetTextAntialiasMode;
     pub const BeginDraw = IRenderTarget.Methods(@This()).BeginDraw;
     pub const EndDraw = IRenderTarget.Methods(@This()).EndDraw;
     pub const GetSize = IRenderTarget.Methods(@This()).GetSize;

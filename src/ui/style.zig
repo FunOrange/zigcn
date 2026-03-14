@@ -1,19 +1,39 @@
 const d2d1 = @import("../win32/d2d1.zig");
+const dwrite = @import("../win32/dwrite.zig");
 
-const FontWeight = enum {
+pub const Style = struct {
+    text_color: ?*d2d1.ISolidColorBrush = null,
+    background_color: ?*d2d1.ISolidColorBrush = null,
+    border_color: ?*d2d1.ISolidColorBrush = null,
+    font: Font = .{},
+    text_align: dwrite.TEXT_ALIGNMENT = .CENTER,
+    paragraph_align: dwrite.PARAGRAPH_ALIGNMENT = .CENTER,
+};
+
+pub const Font = struct {
+    family: []const u8 = "Segoe UI",
+    size: FontSize = .Base,
+    weight: FontWeight = .Normal,
+};
+
+pub const FontWeight = enum(u8) {
     Normal,
-    Semibold,
+    Medium,
     Bold,
 };
 
-pub const Style = struct {
-    color: *d2d1.ISolidColorBrush,
-    font_family: []const u8 = "Segoe UI",
-    font_size: f32 = 14.0,
-    font_weight: FontWeight = .Normal,
-};
-
-pub const PartialStyle = struct {
-    color: ?*d2d1.ISolidColorBrush = null,
-    border_color: ?*d2d1.ISolidColorBrush = null,
+pub const FontSize = enum(u8) {
+    XS,
+    SM,
+    Base,
+    LG,
+    XL,
+    XL2,
+    XL3,
+    XL4,
+    XL5,
+    XL6,
+    XL7,
+    XL8,
+    XL9,
 };

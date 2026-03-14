@@ -6,8 +6,8 @@ const d2d1 = @import("win32/d2d1.zig");
 const wic = @import("win32/wincodec.zig");
 const dwrite = @import("win32/dwrite.zig");
 const Style = @import("ui/style.zig").Style;
-const VStack = @import("ui/vstack.zig").VStack;
 const Widget = @import("ui/widget.zig").Widget;
+const ui = @import("ui.zig");
 const drawing = @import("drawing.zig");
 
 pub const std_options = std.Options{
@@ -29,11 +29,11 @@ pub fn main() !void {
     _ = w32.CoInitializeEx(null, w32.COINIT_MULTITHREADED);
     defer w32.CoUninitialize();
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    var _gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = _gpa.deinit();
+    const gpa = _gpa.allocator();
 
-    var app = try StaticContext.init(allocator);
+    var app = try StaticContext.init();
     defer app.deinit();
 
     while (true) {
@@ -44,15 +44,17 @@ pub fn main() !void {
             if (message.message == w32.WM_QUIT) break;
         }
 
+        var _arena = std.heap.ArenaAllocator.init(gpa);
+        const arena = _arena.allocator();
         if (app.update())
-            app.draw();
+            app.draw(arena) catch @panic("adslfdsflkjadslkfjkj");
+
+        _ = _arena.deinit();
     }
 }
 
 // stuff that has static lifetime gets thrown in here
 const StaticContext = struct {
-    allocator: std.mem.Allocator,
-
     hwnd: w32.HWND,
 
     wic_factory: *wic.IImagingFactory2,
@@ -65,7 +67,7 @@ const StaticContext = struct {
         drawing_context: drawing.DrawingContext,
     },
 
-    fn init(allocator: std.mem.Allocator) !StaticContext {
+    fn init() !StaticContext {
         const width = 800;
         const height = 600;
         const hwnd = create_window(width, height);
@@ -143,11 +145,10 @@ const StaticContext = struct {
             break :blk .{ d2d_device, d2d_device_context, d2d_hwnd_target };
         };
 
-        const drawing_context = drawing.DrawingContext.init(d2d_hwnd_target);
+        const drawing_context = drawing.DrawingContext.init(dwrite_factory, d2d_hwnd_target);
 
         return .{
             .hwnd = hwnd,
-            .allocator = allocator,
             .wic_factory = wic_factory,
             .dwrite_factory = dwrite_factory,
             .d2d = .{
@@ -185,7 +186,7 @@ const StaticContext = struct {
         return true;
     }
 
-    fn draw(app: *StaticContext) void {
+    fn draw(app: *StaticContext, allocator: std.mem.Allocator) !void {
         const ctx = app.d2d.drawing_context;
         const r = ctx.r;
         const size = r.GetSize();
@@ -195,59 +196,17 @@ const StaticContext = struct {
         r.BeginDraw();
         defer vhr(r.EndDraw(null, null));
 
-        // background
-        r.FillRectangle(
-            &d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h },
-            @ptrCast(ctx.slate900),
-        );
+        r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.slate900));
 
-        const vstack = VStack{
-            .style = .{ .color = ctx.rose500 },
-        };
-        const vstackRect = d2d1.RECT_F{ .left = w * 1 / 5, .top = h * 2 / 5, .right = w * 4 / 5, .bottom = h * 3 / 5 };
+        const vstack = ui.VStack{ .style = .{ .background_color = ctx.slate800 } };
+        const vstackRect = d2d1.RECT_F{ .left = w * 3 / 10, .top = h * 2 / 5, .right = w * 7 / 10, .bottom = h * 3 / 5 };
         vstack.render(&ctx, &vstackRect);
 
-        var white: *d2d1.ISolidColorBrush = undefined;
-        vhr(r.CreateSolidColorBrush(
-            &.{ .r = 1.0, .g = 1.0, .b = 1.0, .a = 1.0 },
-            null,
-            @ptrCast(&white),
-        ));
-        defer _ = white.Release();
-
-        var text_format: *dwrite.ITextFormat = undefined;
-        const font = std.unicode.utf8ToUtf16LeStringLiteral("Noto Sans JP");
-        const locale = std.unicode.utf8ToUtf16LeStringLiteral("en-us");
-        vhr(app.dwrite_factory.CreateTextFormat(
-            font,
-            null,
-            .BOLD,
-            .NORMAL,
-            .NORMAL,
-            20.0,
-            locale,
-            @ptrCast(&text_format),
-        ));
-        defer _ = text_format.Release();
-
-        vhr(text_format.SetTextAlignment(.CENTER));
-        vhr(text_format.SetParagraphAlignment(.CENTER));
-
-        const text = std.unicode.utf8ToUtf16LeStringLiteral("なんでやねん");
-        r.DrawText(
-            text,
-            @intCast(text.len),
-            text_format,
-            &d2d1.RECT_F{
-                .left = 0.0,
-                .top = 0.0,
-                .right = w,
-                .bottom = h,
-            },
-            @ptrCast(ctx.slate50),
-            .{},
-            .NATURAL,
-        );
+        const text = ui.Text{ .text = "Top text\nなんでやねん！", .style = .{
+            .text_color = ctx.slate100,
+            .font = .{ .size = .XL },
+        } };
+        text.render(allocator, &ctx, &vstackRect);
     }
 };
 
