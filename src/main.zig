@@ -5,8 +5,8 @@ const dxgi = @import("win32/dxgi.zig");
 const d2d1 = @import("win32/d2d1.zig");
 const wic = @import("win32/wincodec.zig");
 const dwrite = @import("win32/dwrite.zig");
-const Style = @import("ui/style.zig").Style;
 const ui = @import("ui.zig");
+const colors = @import("colors.zig");
 const drawing = @import("drawing.zig");
 
 pub const std_options = std.Options{
@@ -33,6 +33,7 @@ pub fn main() !void {
     const gpa = _gpa.allocator();
 
     var _window_arena = std.heap.ArenaAllocator.init(gpa);
+    defer _ = _window_arena.deinit();
     const window_arena = _window_arena.allocator();
     var window = try WindowContext.init(window_arena);
     defer window.deinit();
@@ -52,8 +53,6 @@ pub fn main() !void {
 
         _ = _frame_arena.deinit();
     }
-
-    _ = _window_arena.deinit();
 }
 
 const WindowContext = struct {
@@ -156,14 +155,14 @@ const WindowContext = struct {
             break :blk .{ d2d_device, d2d_device_context, d2d_hwnd_target };
         };
 
-        const ctx = drawing.DrawingContext.init(dwrite_factory, d2d_hwnd_target);
+        var ctx = drawing.DrawingContext.init(allocator, dwrite_factory, d2d_hwnd_target);
 
         var children = try allocator.alloc(ui.Widget, 3);
         children[0] = .{ .text = .{
             .text = "Current time: ",
             .height = .{ .Flex = 2.0 },
             .style = .{
-                .text_color = ctx.slate300,
+                .text_color = ctx.brushes.get(colors.slate300),
                 .font = .{ .size = .XL },
             },
         } };
@@ -171,20 +170,20 @@ const WindowContext = struct {
             .text = "なんでやねん！",
             .height = .{ .Flex = 4.0 },
             .style = .{
-                .text_color = ctx.slate50,
+                .text_color = ctx.brushes.get(colors.slate50),
                 .font = .{ .size = .XL },
             },
         } };
         children[2] = .{ .text = .{
             .text = "bottom text",
             .style = .{
-                .text_color = ctx.slate300,
+                .text_color = ctx.brushes.get(colors.slate300),
                 .font = .{ .size = .XL },
             },
         } };
         const ui_root = ui.Widget{
             .vstack = .{
-                .style = .{ .background_color = ctx.slate800 },
+                .style = .{ .background_color = ctx.brushes.get(colors.slate800) },
                 .children = children,
             },
         };
@@ -220,13 +219,13 @@ const WindowContext = struct {
     }
 
     fn update(app: *WindowContext, allocator: std.mem.Allocator) bool {
-        const ctx = app.d2d.drawing_context;
+        var ctx = &app.d2d.drawing_context;
 
         const current_time = std.time.timestamp();
         app.ui.refs.current_time_text.text = std.fmt.allocPrint(allocator, "Current time: {any}", .{current_time}) catch unreachable;
 
         const size = ctx.r.GetSize();
-        app.ui.root.layout(allocator, &ctx, d2d1.RECT_F{
+        app.ui.root.layout(allocator, ctx, d2d1.RECT_F{
             .left = 0.0,
             .top = 0.0,
             .right = size.width,
@@ -237,7 +236,7 @@ const WindowContext = struct {
     }
 
     fn render(app: *WindowContext, allocator: std.mem.Allocator) !void {
-        const ctx = app.d2d.drawing_context;
+        const ctx = &app.d2d.drawing_context;
         const r = ctx.r;
         const size = r.GetSize();
         const w = size.width;
@@ -247,10 +246,10 @@ const WindowContext = struct {
         defer vhr(r.EndDraw(null, null));
 
         // draw background
-        r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.slate900));
+        r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.brushes.get(colors.slate900)));
 
         // draw UI
-        app.ui.root.render(allocator, &ctx);
+        app.ui.root.render(allocator, ctx);
     }
 };
 

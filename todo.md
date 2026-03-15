@@ -1,6 +1,7 @@
 # TODO
 - [x] vstack
 - [x] how to surgically write changes to ui state
+- [ ] BrushManager
 - [ ] box
 - [ ] border
 - [ ] border radius

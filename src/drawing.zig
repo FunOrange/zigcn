@@ -2,39 +2,56 @@ const std = @import("std");
 const w32 = @import("win32/win32.zig");
 const d2d1 = @import("win32/d2d1.zig");
 const dwrite = @import("win32/dwrite.zig");
-const style = @import("ui/style.zig");
+const ui = @import("ui.zig");
+const LruCache = @import("data-structures.zig").LruCache;
 
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
 const noto = L("Noto Sans JP");
+
+const BRUSH_CACHE_SIZE = 128;
+const TEXT_FORMAT_CACHE_SIZE = 128;
+
+const BrushManager = struct {
+    cache: *LruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE),
+    rt: *d2d1.IHwndRenderTarget,
+
+    pub fn init(allocator: std.mem.Allocator, rt: *d2d1.IHwndRenderTarget) BrushManager {
+        const cache = allocator.create(LruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE)) catch unreachable;
+        cache.* = LruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE).init(allocator);
+        return .{
+            .cache = cache,
+            .rt = rt,
+        };
+    }
+
+    pub fn get(self: *BrushManager, comptime hex: []const u8) *d2d1.ISolidColorBrush {
+        if (self.cache.get(hex)) |brush| {
+            return brush;
+        }
+        const brush = createBrush(self.rt, hex);
+        if (self.cache.put(hex, brush) catch unreachable) |evicted| {
+            _ = evicted.Release();
+        }
+        return brush;
+    }
+
+    pub fn deinit(self: *BrushManager) void {
+        var iter = self.cache.map.iterator();
+        while (iter.next()) |entry| {
+            const brush = entry.value_ptr.value;
+            _ = brush.Release();
+        }
+        self.cache.deinit();
+    }
+};
 
 pub const DrawingContext = struct {
     r: *d2d1.IHwndRenderTarget,
     dw: *dwrite.IFactory,
 
     // brushes
-    slate50: *d2d1.ISolidColorBrush,
-    slate100: *d2d1.ISolidColorBrush,
-    slate200: *d2d1.ISolidColorBrush,
-    slate300: *d2d1.ISolidColorBrush,
-    slate400: *d2d1.ISolidColorBrush,
-    slate500: *d2d1.ISolidColorBrush,
-    slate600: *d2d1.ISolidColorBrush,
-    slate700: *d2d1.ISolidColorBrush,
-    slate800: *d2d1.ISolidColorBrush,
-    slate900: *d2d1.ISolidColorBrush,
-    slate950: *d2d1.ISolidColorBrush,
-    rose50: *d2d1.ISolidColorBrush,
-    rose100: *d2d1.ISolidColorBrush,
-    rose200: *d2d1.ISolidColorBrush,
-    rose300: *d2d1.ISolidColorBrush,
-    rose400: *d2d1.ISolidColorBrush,
-    rose500: *d2d1.ISolidColorBrush,
-    rose600: *d2d1.ISolidColorBrush,
-    rose700: *d2d1.ISolidColorBrush,
-    rose800: *d2d1.ISolidColorBrush,
-    rose900: *d2d1.ISolidColorBrush,
-    rose950: *d2d1.ISolidColorBrush,
+    brushes: BrushManager,
 
     // fonts
     noto_normal_xs: *dwrite.ITextFormat,
@@ -77,32 +94,11 @@ pub const DrawingContext = struct {
     noto_bold_8xl: *dwrite.ITextFormat,
     noto_bold_9xl: *dwrite.ITextFormat,
 
-    pub fn init(dw: *dwrite.IFactory, rt: *d2d1.IHwndRenderTarget) DrawingContext {
-        return .{
+    pub fn init(allocator: std.mem.Allocator, dw: *dwrite.IFactory, rt: *d2d1.IHwndRenderTarget) DrawingContext {
+        var ctx = DrawingContext{
             .r = rt,
             .dw = dw,
-            .slate50 = createBrush(rt, "#f8fafc"),
-            .slate100 = createBrush(rt, "#f1f5f9"),
-            .slate200 = createBrush(rt, "#e2e8f0"),
-            .slate300 = createBrush(rt, "#cbd5e1"),
-            .slate400 = createBrush(rt, "#94a3b8"),
-            .slate500 = createBrush(rt, "#64748b"),
-            .slate600 = createBrush(rt, "#475569"),
-            .slate700 = createBrush(rt, "#334155"),
-            .slate800 = createBrush(rt, "#1e293b"),
-            .slate900 = createBrush(rt, "#0f172a"),
-            .slate950 = createBrush(rt, "#020617"),
-            .rose50 = createBrush(rt, "#fff1f2"),
-            .rose100 = createBrush(rt, "#ffe4e6"),
-            .rose200 = createBrush(rt, "#fecdd3"),
-            .rose300 = createBrush(rt, "#fda4af"),
-            .rose400 = createBrush(rt, "#fb7185"),
-            .rose500 = createBrush(rt, "#f43f5e"),
-            .rose600 = createBrush(rt, "#e11d48"),
-            .rose700 = createBrush(rt, "#be123c"),
-            .rose800 = createBrush(rt, "#9f1239"),
-            .rose900 = createBrush(rt, "#881337"),
-            .rose950 = createBrush(rt, "#4c0519"),
+            .brushes = undefined,
             .noto_normal_xs = createTextFormat(dw, noto, 12.0, .NORMAL),
             .noto_normal_sm = createTextFormat(dw, noto, 14.0, .NORMAL),
             .noto_normal_base = createTextFormat(dw, noto, 16.0, .NORMAL),
@@ -143,9 +139,11 @@ pub const DrawingContext = struct {
             .noto_bold_8xl = createTextFormat(dw, noto, 96.0, .BOLD),
             .noto_bold_9xl = createTextFormat(dw, noto, 128.0, .BOLD),
         };
+        ctx.brushes = BrushManager.init(allocator, rt);
+        return ctx;
     }
 
-    pub fn getTextFormat(this: *const DrawingContext, font: style.Font) ?*dwrite.ITextFormat {
+    pub fn getTextFormat(this: *const DrawingContext, font: ui.style.Font) ?*dwrite.ITextFormat {
         return switch (font.weight) {
             .Normal => switch (font.size) {
                 .XS => this.noto_normal_xs,
@@ -196,28 +194,7 @@ pub const DrawingContext = struct {
     }
 
     pub fn deinit(this: *DrawingContext) void {
-        _ = this.slate50.Release();
-        _ = this.slate100.Release();
-        _ = this.slate200.Release();
-        _ = this.slate300.Release();
-        _ = this.slate400.Release();
-        _ = this.slate500.Release();
-        _ = this.slate600.Release();
-        _ = this.slate700.Release();
-        _ = this.slate800.Release();
-        _ = this.slate900.Release();
-        _ = this.slate950.Release();
-        _ = this.rose50.Release();
-        _ = this.rose100.Release();
-        _ = this.rose200.Release();
-        _ = this.rose300.Release();
-        _ = this.rose400.Release();
-        _ = this.rose500.Release();
-        _ = this.rose600.Release();
-        _ = this.rose700.Release();
-        _ = this.rose800.Release();
-        _ = this.rose900.Release();
-        _ = this.rose950.Release();
+        _ = this.brushes.deinit();
         _ = this.noto_normal_xs.Release();
         _ = this.noto_normal_sm.Release();
         _ = this.noto_normal_base.Release();

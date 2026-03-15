@@ -1,9 +1,12 @@
 const std = @import("std");
 const Style = @import("ui/style.zig").Style;
+const colors = @import("colors.zig");
 const d2d1 = @import("win32/d2d1.zig");
 const vhr = @import("win32/win32.zig").vhr;
 const dwrite = @import("win32/dwrite.zig");
 const DrawingContext = @import("drawing.zig").DrawingContext;
+
+pub const style = @import("ui/style.zig");
 
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
@@ -34,7 +37,7 @@ pub const Widget = union(enum) {
         };
     }
 
-    pub fn measure(self: *const Widget, allocator: std.mem.Allocator, ctx: *const DrawingContext, available: d2d1.RECT_F) RectSize {
+    pub fn measure(self: *const Widget, allocator: std.mem.Allocator, ctx: *DrawingContext, available: d2d1.RECT_F) RectSize {
         switch (self.*) {
             .vstack => |v| {
                 var total_height: f32 = 0;
@@ -78,7 +81,7 @@ pub const Widget = union(enum) {
         }
     }
 
-    pub fn layout(self: *Widget, allocator: std.mem.Allocator, ctx: *const DrawingContext, available: d2d1.RECT_F) void {
+    pub fn layout(self: *Widget, allocator: std.mem.Allocator, ctx: *DrawingContext, available: d2d1.RECT_F) void {
         switch (self.*) {
             .vstack => |*v| {
                 // 1. measure all non-flex children
@@ -116,7 +119,7 @@ pub const Widget = union(enum) {
         }
     }
 
-    pub fn render(self: *const Widget, allocator: std.mem.Allocator, ctx: *const DrawingContext) void {
+    pub fn render(self: *const Widget, allocator: std.mem.Allocator, ctx: *DrawingContext) void {
         switch (self.*) {
             .vstack => |v| v.render(allocator, ctx),
             .text => |t| t.render(allocator, ctx),
@@ -133,7 +136,7 @@ pub const VStack = struct {
     // dynamically computed in update() loop via widget.layout()
     layout_rect: d2d1.RECT_F = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
 
-    pub fn render(self: *const VStack, allocator: std.mem.Allocator, ctx: *const DrawingContext) void {
+    pub fn render(self: *const VStack, allocator: std.mem.Allocator, ctx: *DrawingContext) void {
         if (self.style.background_color) |color| {
             ctx.r.FillRectangle(&self.layout_rect, @ptrCast(color));
         }
@@ -152,7 +155,7 @@ pub const Text = struct {
     // dynamically computed in update() loop via widget.layout()
     layout_rect: d2d1.RECT_F = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
 
-    pub fn render(self: *const Text, allocator: std.mem.Allocator, ctx: *const DrawingContext) void {
+    pub fn render(self: *const Text, allocator: std.mem.Allocator, ctx: *DrawingContext) void {
         const text_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, self.text) catch |e| switch (e) {
             error.InvalidUtf8 => L("Invalid UTF-8"),
             error.OutOfMemory => @panic("Out of memory"),
@@ -167,7 +170,7 @@ pub const Text = struct {
             @intCast(text_w.len),
             text_format,
             &self.layout_rect,
-            @ptrCast(self.style.text_color orelse ctx.slate50),
+            @ptrCast(self.style.text_color orelse ctx.brushes.get(colors.slate50)),
             .{},
             .NATURAL,
         );
