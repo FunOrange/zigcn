@@ -3,151 +3,148 @@ const std = @import("std");
 pub const EmptyMap = error{EmptyMap};
 
 pub fn StringLruCache(comptime V: type, comptime max_size: usize) type {
-    return struct {
-        const Self = @This();
-
-        const Entry = struct {
-            value: V,
-            order: u64, // insertion/access counter, lower = older
-        };
-
-        map: std.StringHashMap(Entry),
-        counter: u64 = 0,
-
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return .{ .map = std.StringHashMap(Entry).init(allocator) };
-        }
-
-        pub fn deinit(self: *Self) void {
-            self.map.deinit();
-        }
-
-        pub fn get(self: *Self, key: []const u8) ?V {
-            if (self.map.getPtr(key)) |entry| {
-                // update access order
-                self.counter += 1;
-                entry.order = self.counter;
-                return entry.value;
-            }
-            return null;
-        }
-
-        // returns evicted value if cache is full
-        pub fn put(self: *Self, key: []const u8, value: V) !?V {
-            // if key already exists, just update
-            if (self.map.getPtr(key)) |entry| {
-                const old = entry.value;
-                self.counter += 1;
-                entry.value = value;
-                entry.order = self.counter;
-                return old;
-            }
-
-            // evict oldest entry if at capacity
-            var evicted: ?V = null;
-            if (self.map.count() >= max_size) {
-                if (try self.evictOldest()) |_evicted| {
-                    evicted = _evicted;
-                }
-            }
-
-            self.counter += 1;
-            try self.map.put(key, .{ .value = value, .order = self.counter });
-            return evicted;
-        }
-
-        fn evictOldest(self: *Self) !?V {
-            var oldest_key: ?[]const u8 = null;
-            var oldest_order: u64 = std.math.maxInt(u64);
-
-            var iter = self.map.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.order < oldest_order) {
-                    oldest_order = entry.value_ptr.order;
-                    oldest_key = entry.key_ptr.*;
-                }
-            }
-
-            if (oldest_key) |k| {
-                const kv = self.map.fetchRemove(k).?;
-                return kv.value.value;
-            }
-            return null;
-        }
-    };
+    return LruCache([]const u8, V, std.hash_map.StringContext, max_size);
 }
 
 pub fn AutoLruCache(comptime K: type, comptime V: type, comptime max_size: usize) type {
+    return LruCache(K, V, std.hash_map.AutoContext(K), max_size);
+}
+
+pub fn LruCache(comptime K: type, comptime V: type, comptime Context: type, comptime max_size: usize) type {
+    std.debug.assert(max_size > 0);
+
     return struct {
         const Self = @This();
 
-        const Entry = struct {
+        const Index = std.math.IntFittingRange(0, max_size);
+        const null_index = std.math.maxInt(Index);
+
+        pub const Entry = struct {
             value: V,
-            order: u64, // insertion/access counter, lower = older
+            node_idx: Index,
         };
 
-        map: std.AutoHashMap(K, Entry),
-        counter: u64 = 0,
+        const Node = struct {
+            key: K,
+            prev: Index = null_index,
+            next: Index = null_index,
+        };
+
+        map: std.HashMap(K, Entry, Context, std.hash_map.default_max_load_percentage),
+        nodes: []Node,
+        allocator: std.mem.Allocator,
+
+        head: Index = null_index, // Most recently used
+        tail: Index = null_index, // Least recently used
+        free_head: Index = 0, // Head of the free list
 
         pub fn init(allocator: std.mem.Allocator) Self {
-            return .{ .map = std.AutoHashMap(K, Entry).init(allocator) };
+            const nodes = allocator.alloc(Node, max_size) catch unreachable;
+            for (nodes, 0..) |*node, i| {
+                node.next = if (i + 1 < max_size) @intCast(i + 1) else null_index;
+                node.prev = null_index;
+            }
+
+            var map = std.HashMap(K, Entry, Context, std.hash_map.default_max_load_percentage).init(allocator);
+            map.ensureTotalCapacity(max_size) catch unreachable;
+
+            return .{
+                .map = map,
+                .nodes = nodes,
+                .allocator = allocator,
+            };
         }
 
         pub fn deinit(self: *Self) void {
             self.map.deinit();
+            self.allocator.free(self.nodes);
+            self.* = undefined;
         }
 
         pub fn get(self: *Self, key: K) ?V {
             if (self.map.getPtr(key)) |entry| {
-                // update access order
-                self.counter += 1;
-                entry.order = self.counter;
+                self.moveToHead(entry.node_idx);
                 return entry.value;
             }
             return null;
         }
 
-        // returns evicted value, if cache is full
+        // Returns evicted value if cache is full
         pub fn put(self: *Self, key: K, value: V) !?V {
-            // if key already exists, just update
             if (self.map.getPtr(key)) |entry| {
-                const old = entry.value;
-                self.counter += 1;
+                const old_value = entry.value;
                 entry.value = value;
-                entry.order = self.counter;
-                return old;
+                self.moveToHead(entry.node_idx);
+                return old_value;
             }
 
-            // evict oldest entry if at capacity
-            var evicted: ?V = null;
-            if (self.map.count() >= max_size) {
-                if (try self.evictOldest()) |_evicted| {
-                    evicted = _evicted;
+            var evicted_value: ?V = null;
+            var idx: Index = undefined;
+
+            if (self.free_head != null_index) {
+                // Consume from free list
+                idx = self.free_head;
+                self.free_head = self.nodes[idx].next;
+            } else {
+                // Evict tail (least recently used)
+                idx = self.tail;
+                std.debug.assert(idx != null_index);
+
+                const tail_node = &self.nodes[idx];
+
+                if (self.map.fetchRemove(tail_node.key)) |kv| {
+                    evicted_value = kv.value.value;
                 }
+
+                self.removeNode(idx);
             }
 
-            self.counter += 1;
-            try self.map.put(key, .{ .value = value, .order = self.counter });
-            return evicted;
+            self.nodes[idx] = .{
+                .key = key,
+            };
+
+            // Map has guaranteed capacity, so this will never allocate
+            self.map.putAssumeCapacity(key, .{ .value = value, .node_idx = idx });
+            self.insertAtHead(idx);
+
+            return evicted_value;
         }
 
-        fn evictOldest(self: *Self) !?V {
-            var oldest_key: ?K = null;
-            var oldest_order: u64 = std.math.maxInt(u64);
+        fn moveToHead(self: *Self, idx: Index) void {
+            if (self.head == idx) return;
+            self.removeNode(idx);
+            self.insertAtHead(idx);
+        }
 
-            var iter = self.map.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.order < oldest_order) {
-                    oldest_order = entry.value_ptr.order;
-                    oldest_key = entry.key_ptr.*;
-                }
+        fn removeNode(self: *Self, idx: Index) void {
+            const node = &self.nodes[idx];
+
+            if (node.prev != null_index) {
+                self.nodes[node.prev].next = node.next;
+            } else {
+                self.head = node.next;
             }
 
-            if (oldest_key) |k| {
-                const kv = self.map.fetchRemove(k).?;
-                return kv.value.value;
+            if (node.next != null_index) {
+                self.nodes[node.next].prev = node.prev;
+            } else {
+                self.tail = node.prev;
             }
-            return null;
+        }
+
+        fn insertAtHead(self: *Self, idx: Index) void {
+            const node = &self.nodes[idx];
+            node.next = self.head;
+            node.prev = null_index;
+
+            if (self.head != null_index) {
+                self.nodes[self.head].prev = idx;
+            }
+            self.head = idx;
+
+            if (self.tail == null_index) {
+                self.tail = idx;
+            }
         }
     };
 }
