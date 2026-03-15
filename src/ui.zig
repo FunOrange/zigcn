@@ -13,9 +13,9 @@ pub const RectSize = struct {
 };
 
 pub const Size = union(enum) {
-    fixed: f32, // take up exactly this many DIPs
-    flex_grow: f32, // take up this fraction of remaining space (like flex: 1)
-    hug, // value returned by measure()
+    Fixed: f32, // take up exactly this many DIPs
+    Flex: f32, // take up this fraction of remaining space (like flex: 1)
+    Hug, // value returned by measure()
 };
 
 pub const Widget = union(enum) {
@@ -86,7 +86,7 @@ pub const Widget = union(enum) {
                 var total_flex: f32 = 0;
                 for (v.children) |*child| {
                     switch (child.height()) {
-                        .flex_grow => |flex| total_flex += flex,
+                        .Flex => |flex| total_flex += flex,
                         else => fixed_height += child.measure(allocator, ctx, available).height, // + v.gap,
                     }
                 }
@@ -96,9 +96,9 @@ pub const Widget = union(enum) {
                 var cursor: f32 = available.top;
                 for (v.children) |*child| {
                     const child_h = switch (child.height()) {
-                        .fixed => |px| px,
-                        .hug => child.measure(allocator, ctx, available).height,
-                        .flex_grow => |flex_grow| remaining * (flex_grow / total_flex),
+                        .Fixed => |px| px,
+                        .Hug => child.measure(allocator, ctx, available).height,
+                        .Flex => |flex_grow| remaining * (flex_grow / total_flex),
                     };
                     child.layout(allocator, ctx, .{
                         .left = available.left,
@@ -126,8 +126,8 @@ pub const Widget = union(enum) {
 
 pub const VStack = struct {
     children: []Widget = &[0]Widget{},
-    width: Size = .hug,
-    height: Size = .hug,
+    width: Size = .Hug,
+    height: Size = .Hug,
     style: Style = .{},
 
     // dynamically computed in update() loop via widget.layout()
@@ -145,8 +145,8 @@ pub const VStack = struct {
 
 pub const Text = struct {
     text: []const u8,
-    width: Size = .{ .flex_grow = 1.0 },
-    height: Size = .{ .flex_grow = 1.0 },
+    width: Size = .Hug,
+    height: Size = .Hug,
     style: Style = .{},
 
     // dynamically computed in update() loop via widget.layout()

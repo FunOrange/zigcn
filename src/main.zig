@@ -151,25 +151,34 @@ const WindowContext = struct {
 
         const ctx = drawing.DrawingContext.init(dwrite_factory, d2d_hwnd_target);
 
-        var children = std.ArrayList(ui.Widget).empty;
-        try children.append(allocator, .{ .text = .{
+        var children = try allocator.alloc(ui.Widget, 3);
+        children[0] = .{ .text = .{
             .text = "Top text",
+            .height = .{ .Flex = 2.0 },
             .style = .{
-                .text_color = ctx.slate100,
+                .text_color = ctx.slate300,
                 .font = .{ .size = .XL },
             },
-        } });
-        try children.append(allocator, .{ .text = .{
+        } };
+        children[1] = .{ .text = .{
             .text = "なんでやねん！",
+            .height = .{ .Flex = 4.0 },
             .style = .{
-                .text_color = ctx.slate100,
+                .text_color = ctx.slate50,
                 .font = .{ .size = .XL },
             },
-        } });
+        } };
+        children[2] = .{ .text = .{
+            .text = "bottom text",
+            .style = .{
+                .text_color = ctx.slate300,
+                .font = .{ .size = .XL },
+            },
+        } };
         const ui_root = ui.Widget{
             .vstack = .{
                 .style = .{ .background_color = ctx.slate800 },
-                .children = children.items,
+                .children = children,
             },
         };
 
@@ -202,7 +211,12 @@ const WindowContext = struct {
         const ctx = app.d2d.drawing_context;
 
         const size = ctx.r.GetSize();
-        app.ui_root.layout(allocator, &ctx, d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = size.width, .bottom = size.height });
+        app.ui_root.layout(allocator, &ctx, d2d1.RECT_F{
+            .left = 0.0,
+            .top = 0.0,
+            .right = size.width,
+            .bottom = size.height,
+        });
 
         return true;
     }
