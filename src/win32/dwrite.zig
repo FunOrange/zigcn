@@ -66,6 +66,18 @@ pub const PARAGRAPH_ALIGNMENT = enum(UINT) {
     CENTER = 2,
 };
 
+pub const TEXT_METRICS = extern struct {
+    left: FLOAT,
+    top: FLOAT,
+    width: FLOAT,
+    widthIncludingTrailingWhitespace: FLOAT,
+    height: FLOAT,
+    layoutWidth: FLOAT,
+    layoutHeight: FLOAT,
+    maxBidiReorderingDepth: UINT32,
+    lineCount: UINT32,
+};
+
 pub const IFontCollection = extern struct {
     __v: *const VTable,
 
@@ -140,6 +152,77 @@ pub const ITextFormat = extern struct {
     };
 };
 
+pub const ITextLayout = extern struct {
+    __v: *const VTable,
+
+    pub const QueryInterface = IUnknown.Methods(@This()).QueryInterface;
+    pub const AddRef = IUnknown.Methods(@This()).AddRef;
+    pub const Release = IUnknown.Methods(@This()).Release;
+
+    pub const SetTextAlignment = ITextFormat.Methods(@This()).SetTextAlignment;
+    pub const SetParagraphAlignment = ITextFormat.Methods(@This()).SetParagraphAlignment;
+    pub const GetMaxWidth = ITextLayout.Methods(@This()).GetMaxWidth;
+    pub const GetMaxHeight = ITextLayout.Methods(@This()).GetMaxHeight;
+    pub const GetMetrics = ITextLayout.Methods(@This()).GetMetrics;
+
+    pub fn Methods(comptime T: type) type {
+        return extern struct {
+            pub inline fn GetMaxWidth(self: *T) FLOAT {
+                return @as(*const ITextLayout.VTable, @ptrCast(self.__v)).GetMaxWidth(@ptrCast(self));
+            }
+            pub inline fn GetMaxHeight(self: *T) FLOAT {
+                return @as(*const ITextLayout.VTable, @ptrCast(self.__v)).GetMaxHeight(@ptrCast(self));
+            }
+            pub inline fn GetMetrics(self: *T, metrics: *TEXT_METRICS) HRESULT {
+                return @as(*const ITextLayout.VTable, @ptrCast(self.__v)).GetMetrics(@ptrCast(self), metrics);
+            }
+        };
+    }
+
+    pub const VTable = extern struct {
+        base: ITextFormat.VTable,
+        SetMaxWidth: *anyopaque,
+        SetMaxHeight: *anyopaque,
+        SetFontCollection: *anyopaque,
+        SetFontFamilyName: *anyopaque,
+        SetFontWeight: *anyopaque,
+        SetFontStyle: *anyopaque,
+        SetFontStretch: *anyopaque,
+        SetFontSize: *anyopaque,
+        SetUnderline: *anyopaque,
+        SetStrikethrough: *anyopaque,
+        SetDrawingEffect: *anyopaque,
+        SetInlineObject: *anyopaque,
+        SetTypography: *anyopaque,
+        SetLocaleName: *anyopaque,
+        GetMaxWidth: *const fn (*ITextLayout) callconv(WINAPI) FLOAT,
+        GetMaxHeight: *const fn (*ITextLayout) callconv(WINAPI) FLOAT,
+        GetFontCollection: *anyopaque,
+        GetFontFamilyNameLength: *anyopaque,
+        GetFontFamilyName: *anyopaque,
+        GetFontWeight: *anyopaque,
+        GetFontStyle: *anyopaque,
+        GetFontStretch: *anyopaque,
+        GetFontSize: *anyopaque,
+        GetUnderline: *anyopaque,
+        GetStrikethrough: *anyopaque,
+        GetDrawingEffect: *anyopaque,
+        GetInlineObject: *anyopaque,
+        GetTypography: *anyopaque,
+        GetLocaleNameLength: *anyopaque,
+        GetLocaleName: *anyopaque,
+        Draw: *anyopaque,
+        GetLineMetrics: *anyopaque,
+        GetMetrics: *const fn (*ITextLayout, *TEXT_METRICS) callconv(WINAPI) HRESULT,
+        GetOverhangMetrics: *anyopaque,
+        GetClusterMetrics: *anyopaque,
+        DetermineMinWidth: *anyopaque,
+        HitTestPoint: *anyopaque,
+        HitTestTextPosition: *anyopaque,
+        HitTestTextRange: *anyopaque,
+    };
+};
+
 pub const IFactory = extern struct {
     __v: *const VTable,
 
@@ -150,6 +233,7 @@ pub const IFactory = extern struct {
     pub const Release = IUnknown.Methods(@This()).Release;
 
     pub const CreateTextFormat = IFactory.Methods(@This()).CreateTextFormat;
+    pub const CreateTextLayout = IFactory.Methods(@This()).CreateTextLayout;
 
     pub fn Methods(comptime T: type) type {
         return extern struct {
@@ -174,6 +258,25 @@ pub const IFactory = extern struct {
                     font_size,
                     locale_name,
                     text_format,
+                );
+            }
+            pub inline fn CreateTextLayout(
+                self: *T,
+                string: LPCWSTR,
+                string_length: UINT32,
+                text_format: *ITextFormat,
+                max_width: FLOAT,
+                max_height: FLOAT,
+                text_layout: *?*ITextLayout,
+            ) HRESULT {
+                return @as(*const IFactory.VTable, @ptrCast(self.__v)).CreateTextLayout(
+                    @ptrCast(self),
+                    string,
+                    string_length,
+                    text_format,
+                    max_width,
+                    max_height,
+                    text_layout,
                 );
             }
         };
@@ -206,7 +309,15 @@ pub const IFactory = extern struct {
         ) callconv(WINAPI) HRESULT,
         CreateTypography: *anyopaque,
         GetGdiInterop: *anyopaque,
-        CreateTextLayout: *anyopaque,
+        CreateTextLayout: *const fn (
+            *IFactory,
+            LPCWSTR,
+            UINT32,
+            *ITextFormat,
+            FLOAT,
+            FLOAT,
+            *?*ITextLayout,
+        ) callconv(WINAPI) HRESULT,
         CreateGdiCompatibleTextLayout: *anyopaque,
         CreateEllipsisTrimmingSign: *anyopaque,
         CreateTextAnalyzer: *anyopaque,

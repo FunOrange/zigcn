@@ -6,7 +6,6 @@ const d2d1 = @import("win32/d2d1.zig");
 const wic = @import("win32/wincodec.zig");
 const dwrite = @import("win32/dwrite.zig");
 const Style = @import("ui/style.zig").Style;
-const Widget = @import("ui/widget.zig").Widget;
 const ui = @import("ui.zig");
 const drawing = @import("drawing.zig");
 
@@ -33,7 +32,9 @@ pub fn main() !void {
     defer _ = _gpa.deinit();
     const gpa = _gpa.allocator();
 
-    var window = try WindowContext.init();
+    var _window_arena = std.heap.ArenaAllocator.init(gpa);
+    const window_arena = _window_arena.allocator();
+    var window = try WindowContext.init(window_arena);
     defer window.deinit();
 
     while (true) {
@@ -44,13 +45,15 @@ pub fn main() !void {
             if (message.message == w32.WM_QUIT) break;
         }
 
-        var _arena = std.heap.ArenaAllocator.init(gpa);
-        const arena = _arena.allocator();
-        if (window.update())
-            window.draw(arena) catch @panic("window.draw failed!");
+        var _frame_arena = std.heap.ArenaAllocator.init(gpa);
+        const frame_arena = _frame_arena.allocator();
+        if (window.update(frame_arena))
+            window.render(frame_arena) catch @panic("window.draw failed!");
 
-        _ = _arena.deinit();
+        _ = _frame_arena.deinit();
     }
+
+    _ = _window_arena.deinit();
 }
 
 const WindowContext = struct {
@@ -66,7 +69,9 @@ const WindowContext = struct {
         drawing_context: drawing.DrawingContext,
     },
 
-    fn init() !WindowContext {
+    ui_root: ui.Widget,
+
+    fn init(allocator: std.mem.Allocator) !WindowContext {
         const width = 800;
         const height = 600;
         const hwnd = create_window(width, height);
@@ -144,7 +149,29 @@ const WindowContext = struct {
             break :blk .{ d2d_device, d2d_device_context, d2d_hwnd_target };
         };
 
-        const drawing_context = drawing.DrawingContext.init(dwrite_factory, d2d_hwnd_target);
+        const ctx = drawing.DrawingContext.init(dwrite_factory, d2d_hwnd_target);
+
+        var children = std.ArrayList(ui.Widget).empty;
+        try children.append(allocator, .{ .text = .{
+            .text = "Top text",
+            .style = .{
+                .text_color = ctx.slate100,
+                .font = .{ .size = .XL },
+            },
+        } });
+        try children.append(allocator, .{ .text = .{
+            .text = "なんでやねん！",
+            .style = .{
+                .text_color = ctx.slate100,
+                .font = .{ .size = .XL },
+            },
+        } });
+        const ui_root = ui.Widget{
+            .vstack = .{
+                .style = .{ .background_color = ctx.slate800 },
+                .children = children.items,
+            },
+        };
 
         return .{
             .hwnd = hwnd,
@@ -154,8 +181,9 @@ const WindowContext = struct {
                 .factory = d2d_factory,
                 .device = d2d_device,
                 .device_context = d2d_device_context,
-                .drawing_context = drawing_context,
+                .drawing_context = ctx,
             },
+            .ui_root = ui_root,
         };
     }
 
@@ -170,22 +198,16 @@ const WindowContext = struct {
         a.* = undefined;
     }
 
-    fn update(_: *WindowContext) bool {
-        // switch (game.gpu_context.handle_window_resize()) {
-        //     .minimized => {
-        //         w32.Sleep(10);
-        //         return false;
-        //     },
-        //     .resized => {},
-        //     .unchanged => {},
-        // }
+    fn update(app: *WindowContext, allocator: std.mem.Allocator) bool {
+        const ctx = app.d2d.drawing_context;
 
-        // _, const delta_time = update_frame_stats(game.gpu_context.window, window_name);
+        const size = ctx.r.GetSize();
+        app.ui_root.layout(allocator, &ctx, d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = size.width, .bottom = size.height });
 
         return true;
     }
 
-    fn draw(app: *WindowContext, allocator: std.mem.Allocator) !void {
+    fn render(app: *WindowContext, allocator: std.mem.Allocator) !void {
         const ctx = app.d2d.drawing_context;
         const r = ctx.r;
         const size = r.GetSize();
@@ -195,17 +217,11 @@ const WindowContext = struct {
         r.BeginDraw();
         defer vhr(r.EndDraw(null, null));
 
+        // draw background
         r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.slate900));
 
-        const vstack = ui.VStack{ .style = .{ .background_color = ctx.slate800 } };
-        const vstackRect = d2d1.RECT_F{ .left = w * 3 / 10, .top = h * 2 / 5, .right = w * 7 / 10, .bottom = h * 3 / 5 };
-        vstack.render(&ctx, &vstackRect);
-
-        const text = ui.Text{ .text = "Top text\nなんでやねん！", .style = .{
-            .text_color = ctx.slate100,
-            .font = .{ .size = .XL },
-        } };
-        text.render(allocator, &ctx, &vstackRect);
+        // draw UI
+        app.ui_root.render(allocator, &ctx);
     }
 };
 

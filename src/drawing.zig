@@ -10,6 +10,7 @@ const noto = L("Noto Sans JP");
 
 pub const DrawingContext = struct {
     r: *d2d1.IHwndRenderTarget,
+    dw: *dwrite.IFactory,
 
     // brushes
     slate50: *d2d1.ISolidColorBrush,
@@ -79,6 +80,7 @@ pub const DrawingContext = struct {
     pub fn init(dw: *dwrite.IFactory, rt: *d2d1.IHwndRenderTarget) DrawingContext {
         return .{
             .r = rt,
+            .dw = dw,
             .slate50 = createBrush(rt, "#f8fafc"),
             .slate100 = createBrush(rt, "#f1f5f9"),
             .slate200 = createBrush(rt, "#e2e8f0"),

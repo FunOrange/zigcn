@@ -21,6 +21,14 @@ pub const RECT_F = extern struct {
     top: FLOAT,
     right: FLOAT,
     bottom: FLOAT,
+
+    pub fn width(self: *const RECT_F) FLOAT {
+        return self.right - self.left;
+    }
+
+    pub fn height(self: *const RECT_F) FLOAT {
+        return self.bottom - self.top;
+    }
 };
 
 pub const RECT_U = extern struct {
