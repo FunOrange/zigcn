@@ -33,8 +33,8 @@ pub fn main() !void {
     defer _ = _gpa.deinit();
     const gpa = _gpa.allocator();
 
-    var app = try StaticContext.init();
-    defer app.deinit();
+    var window = try WindowContext.init();
+    defer window.deinit();
 
     while (true) {
         var message = std.mem.zeroes(w32.MSG);
@@ -46,15 +46,14 @@ pub fn main() !void {
 
         var _arena = std.heap.ArenaAllocator.init(gpa);
         const arena = _arena.allocator();
-        if (app.update())
-            app.draw(arena) catch @panic("adslfdsflkjadslkfjkj");
+        if (window.update())
+            window.draw(arena) catch @panic("window.draw failed!");
 
         _ = _arena.deinit();
     }
 }
 
-// stuff that has static lifetime gets thrown in here
-const StaticContext = struct {
+const WindowContext = struct {
     hwnd: w32.HWND,
 
     wic_factory: *wic.IImagingFactory2,
@@ -67,7 +66,7 @@ const StaticContext = struct {
         drawing_context: drawing.DrawingContext,
     },
 
-    fn init() !StaticContext {
+    fn init() !WindowContext {
         const width = 800;
         const height = 600;
         const hwnd = create_window(width, height);
@@ -160,7 +159,7 @@ const StaticContext = struct {
         };
     }
 
-    fn deinit(a: *StaticContext) void {
+    fn deinit(a: *WindowContext) void {
         _ = a.d2d.drawing_context.deinit();
         _ = a.d2d.device_context.Release();
         _ = a.d2d.device.Release();
@@ -171,7 +170,7 @@ const StaticContext = struct {
         a.* = undefined;
     }
 
-    fn update(_: *StaticContext) bool {
+    fn update(_: *WindowContext) bool {
         // switch (game.gpu_context.handle_window_resize()) {
         //     .minimized => {
         //         w32.Sleep(10);
@@ -186,7 +185,7 @@ const StaticContext = struct {
         return true;
     }
 
-    fn draw(app: *StaticContext, allocator: std.mem.Allocator) !void {
+    fn draw(app: *WindowContext, allocator: std.mem.Allocator) !void {
         const ctx = app.d2d.drawing_context;
         const r = ctx.r;
         const size = r.GetSize();
