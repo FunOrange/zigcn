@@ -17,7 +17,7 @@ pub const COINIT_APARTMENTTHREADED = 0x2;
 pub const COINIT_DISABLE_OLE1DDE = 0x4;
 pub const COINIT_SPEED_OVER_MEMORY = 0x8;
 
-pub const WINAPI: std.builtin.CallingConvention = if (native_arch == .x86) .Stdcall else .C;
+pub const WINAPI: std.builtin.CallingConvention = if (native_arch == .x86) .stdcall else .c;
 pub const BOOL = enum(c_int) { FALSE = 0, TRUE = 1, _ };
 pub const BOOLEAN = BYTE;
 pub const BYTE = u8;

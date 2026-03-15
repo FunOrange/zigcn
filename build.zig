@@ -8,11 +8,13 @@ pub fn build(b: *std.Build) void {
 
     const exe = b.addExecutable(.{
         .name = "app",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = false,
-        .strip = if (optimize == .ReleaseFast) true else null,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = false,
+            .strip = if (optimize == .ReleaseFast) true else null,
+        }),
     });
     exe.addIncludePath(b.path("src"));
 
