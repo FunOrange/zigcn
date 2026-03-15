@@ -69,7 +69,14 @@ const WindowContext = struct {
         drawing_context: drawing.DrawingContext,
     },
 
-    ui_root: ui.Widget,
+    ui: struct {
+        root: ui.Widget,
+
+        // expose pointers here to easily mutate widget state
+        refs: struct {
+            current_time_text: *ui.Text,
+        },
+    },
 
     fn init(allocator: std.mem.Allocator) !WindowContext {
         const width = 800;
@@ -153,7 +160,7 @@ const WindowContext = struct {
 
         var children = try allocator.alloc(ui.Widget, 3);
         children[0] = .{ .text = .{
-            .text = "Top text",
+            .text = "Current time: ",
             .height = .{ .Flex = 2.0 },
             .style = .{
                 .text_color = ctx.slate300,
@@ -192,7 +199,12 @@ const WindowContext = struct {
                 .device_context = d2d_device_context,
                 .drawing_context = ctx,
             },
-            .ui_root = ui_root,
+            .ui = .{
+                .root = ui_root,
+                .refs = .{
+                    .current_time_text = &children[0].text,
+                },
+            },
         };
     }
 
@@ -210,8 +222,11 @@ const WindowContext = struct {
     fn update(app: *WindowContext, allocator: std.mem.Allocator) bool {
         const ctx = app.d2d.drawing_context;
 
+        const current_time = std.time.timestamp();
+        app.ui.refs.current_time_text.text = std.fmt.allocPrint(allocator, "Current time: {any}", .{current_time}) catch unreachable;
+
         const size = ctx.r.GetSize();
-        app.ui_root.layout(allocator, &ctx, d2d1.RECT_F{
+        app.ui.root.layout(allocator, &ctx, d2d1.RECT_F{
             .left = 0.0,
             .top = 0.0,
             .right = size.width,
@@ -235,7 +250,7 @@ const WindowContext = struct {
         r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.slate900));
 
         // draw UI
-        app.ui_root.render(allocator, &ctx);
+        app.ui.root.render(allocator, &ctx);
     }
 };
 

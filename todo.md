@@ -1,7 +1,12 @@
 # TODO
 - [x] vstack
+- [x] how to surgically write changes to ui state
+- [ ] box
+- [ ] border
+- [ ] border radius
 - [ ] padding
 - [ ] margin
+- [ ] cascading styles
 - [ ] gap
 - [ ] hstack
 - [ ] button

@@ -22,7 +22,7 @@ pub const Widget = union(enum) {
     vstack: VStack,
     text: Text,
 
-    pub fn getWidth(self: Widget) Size {
+    pub fn width(self: Widget) Size {
         return switch (self) {
             inline else => |w| w.width,
         };
@@ -151,36 +151,6 @@ pub const Text = struct {
 
     // dynamically computed in update() loop via widget.layout()
     layout_rect: d2d1.RECT_F = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
-
-    pub fn measure(self: *const Text, allocator: std.mem.Allocator, ctx: *const DrawingContext) RectSize {
-        const text_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, self.text) catch |e| switch (e) {
-            error.InvalidUtf8 => L("Invalid UTF-8"),
-            error.OutOfMemory => @panic("Out of memory"),
-        };
-
-        const text_format = ctx.getTextFormat(self.style.font) orelse ctx.noto_normal_sm;
-        vhr(text_format.SetTextAlignment(.CENTER));
-        vhr(text_format.SetParagraphAlignment(.CENTER));
-
-        var text_layout: *dwrite.ITextLayout = undefined;
-        vhr(ctx.dw.CreateTextLayout(
-            text_w.ptr,
-            @intCast(text_w.len),
-            text_format,
-            std.math.inf(f32), // max width  - unconstrained
-            std.math.inf(f32), // max height - unconstrained
-            @ptrCast(&text_layout),
-        ));
-        defer _ = text_layout.Release();
-
-        var metrics: dwrite.TEXT_METRICS = undefined;
-        vhr(text_layout.GetMetrics(&metrics));
-
-        return RectSize{
-            .width = metrics.width,
-            .height = metrics.height,
-        };
-    }
 
     pub fn render(self: *const Text, allocator: std.mem.Allocator, ctx: *const DrawingContext) void {
         const text_w = std.unicode.utf8ToUtf16LeAllocZ(allocator, self.text) catch |e| switch (e) {
