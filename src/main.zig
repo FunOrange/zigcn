@@ -162,8 +162,8 @@ const WindowContext = struct {
             .text = "Current time: ",
             .height = .{ .Flex = 2.0 },
             .style = .{
-                .text_color = ctx.brushes.get(colors.slate300),
-                .font = .{ .size = .XL },
+                .text_color = ctx.brushes.get(colors.white),
+                .font = .{ .family = .SegoeUI, .size = .xl },
             },
         } };
         children[1] = .{ .text = .{
@@ -171,14 +171,14 @@ const WindowContext = struct {
             .height = .{ .Flex = 4.0 },
             .style = .{
                 .text_color = ctx.brushes.get(colors.slate50),
-                .font = .{ .size = .XL },
+                .font = .{ .size = .xl },
             },
         } };
         children[2] = .{ .text = .{
             .text = "bottom text",
             .style = .{
-                .text_color = ctx.brushes.get(colors.slate300),
-                .font = .{ .size = .XL },
+                .text_color = ctx.brushes.get(colors.white),
+                .font = .{ .family = .SegoeUI, .size = .xl },
             },
         } };
         const ui_root = ui.Widget{
@@ -246,7 +246,7 @@ const WindowContext = struct {
         defer vhr(r.EndDraw(null, null));
 
         // draw background
-        r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.brushes.get(colors.slate900)));
+        r.FillRectangle(&d2d1.RECT_F{ .left = 0.0, .top = 0.0, .right = w, .bottom = h }, @ptrCast(ctx.brushes.get(colors.slate950)));
 
         // draw UI
         app.ui.root.render(allocator, ctx);

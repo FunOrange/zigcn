@@ -11,29 +11,35 @@ pub const Style = struct {
 };
 
 pub const Font = struct {
-    family: []const u8 = "Segoe UI",
+    family: FontFamily = .NotoSansJP,
     size: FontSize = .Base,
     weight: FontWeight = .Normal,
+};
+
+pub const FontFamily = enum(u8) {
+    NotoSansJP,
+    SegoeUI,
 };
 
 pub const FontWeight = enum(u8) {
     Normal,
     Medium,
+    Semibold,
     Bold,
 };
 
 pub const FontSize = enum(u8) {
-    XS,
-    SM,
+    xs,
+    sm,
     Base,
-    LG,
-    XL,
-    XL2,
-    XL3,
-    XL4,
-    XL5,
-    XL6,
-    XL7,
-    XL8,
-    XL9,
+    lg,
+    xl,
+    xl2,
+    xl3,
+    xl4,
+    xl5,
+    xl6,
+    xl7,
+    xl8,
+    xl9,
 };

@@ -3,22 +3,47 @@ const w32 = @import("win32/win32.zig");
 const d2d1 = @import("win32/d2d1.zig");
 const dwrite = @import("win32/dwrite.zig");
 const ui = @import("ui.zig");
-const LruCache = @import("data-structures.zig").LruCache;
+const StringLruCache = @import("data-structures.zig").StringLruCache;
+const AutoLruCache = @import("data-structures.zig").AutoLruCache;
 
 const L = std.unicode.utf8ToUtf16LeStringLiteral;
 
-const noto = L("Noto Sans JP");
+pub const DrawingContext = struct {
+    r: *d2d1.IHwndRenderTarget,
+    dw: *dwrite.IFactory,
+
+    // brushes
+    brushes: BrushManager,
+    fonts: TextFormatManager,
+
+    pub fn init(allocator: std.mem.Allocator, dw: *dwrite.IFactory, rt: *d2d1.IHwndRenderTarget) DrawingContext {
+        var ctx = DrawingContext{
+            .r = rt,
+            .dw = dw,
+            .brushes = undefined,
+            .fonts = undefined,
+        };
+        ctx.brushes = BrushManager.init(allocator, rt);
+        ctx.fonts = TextFormatManager.init(allocator, dw);
+        return ctx;
+    }
+
+    pub fn deinit(this: *DrawingContext) void {
+        _ = this.brushes.deinit();
+        _ = this.fonts.deinit();
+        _ = this.r.Release();
+    }
+};
 
 const BRUSH_CACHE_SIZE = 128;
-const TEXT_FORMAT_CACHE_SIZE = 128;
 
 const BrushManager = struct {
-    cache: *LruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE),
+    cache: *StringLruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE),
     rt: *d2d1.IHwndRenderTarget,
 
     pub fn init(allocator: std.mem.Allocator, rt: *d2d1.IHwndRenderTarget) BrushManager {
-        const cache = allocator.create(LruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE)) catch unreachable;
-        cache.* = LruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE).init(allocator);
+        const cache = allocator.create(StringLruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE)) catch unreachable;
+        cache.* = StringLruCache(*d2d1.ISolidColorBrush, BRUSH_CACHE_SIZE).init(allocator);
         return .{
             .cache = cache,
             .rt = rt,
@@ -46,201 +71,45 @@ const BrushManager = struct {
     }
 };
 
-pub const DrawingContext = struct {
-    r: *d2d1.IHwndRenderTarget,
+const TEXT_FORMAT_CACHE_SIZE = 128;
+
+const TextFormatManager = struct {
+    cache: *AutoLruCache(ui.style.Font, *dwrite.ITextFormat, TEXT_FORMAT_CACHE_SIZE),
     dw: *dwrite.IFactory,
 
-    // brushes
-    brushes: BrushManager,
-
-    // fonts
-    noto_normal_xs: *dwrite.ITextFormat,
-    noto_normal_sm: *dwrite.ITextFormat,
-    noto_normal_base: *dwrite.ITextFormat,
-    noto_normal_lg: *dwrite.ITextFormat,
-    noto_normal_xl: *dwrite.ITextFormat,
-    noto_normal_2xl: *dwrite.ITextFormat,
-    noto_normal_3xl: *dwrite.ITextFormat,
-    noto_normal_4xl: *dwrite.ITextFormat,
-    noto_normal_5xl: *dwrite.ITextFormat,
-    noto_normal_6xl: *dwrite.ITextFormat,
-    noto_normal_7xl: *dwrite.ITextFormat,
-    noto_normal_8xl: *dwrite.ITextFormat,
-    noto_normal_9xl: *dwrite.ITextFormat,
-    noto_medium_xs: *dwrite.ITextFormat,
-    noto_medium_sm: *dwrite.ITextFormat,
-    noto_medium_base: *dwrite.ITextFormat,
-    noto_medium_lg: *dwrite.ITextFormat,
-    noto_medium_xl: *dwrite.ITextFormat,
-    noto_medium_2xl: *dwrite.ITextFormat,
-    noto_medium_3xl: *dwrite.ITextFormat,
-    noto_medium_4xl: *dwrite.ITextFormat,
-    noto_medium_5xl: *dwrite.ITextFormat,
-    noto_medium_6xl: *dwrite.ITextFormat,
-    noto_medium_7xl: *dwrite.ITextFormat,
-    noto_medium_8xl: *dwrite.ITextFormat,
-    noto_medium_9xl: *dwrite.ITextFormat,
-    noto_bold_xs: *dwrite.ITextFormat,
-    noto_bold_sm: *dwrite.ITextFormat,
-    noto_bold_base: *dwrite.ITextFormat,
-    noto_bold_lg: *dwrite.ITextFormat,
-    noto_bold_xl: *dwrite.ITextFormat,
-    noto_bold_2xl: *dwrite.ITextFormat,
-    noto_bold_3xl: *dwrite.ITextFormat,
-    noto_bold_4xl: *dwrite.ITextFormat,
-    noto_bold_5xl: *dwrite.ITextFormat,
-    noto_bold_6xl: *dwrite.ITextFormat,
-    noto_bold_7xl: *dwrite.ITextFormat,
-    noto_bold_8xl: *dwrite.ITextFormat,
-    noto_bold_9xl: *dwrite.ITextFormat,
-
-    pub fn init(allocator: std.mem.Allocator, dw: *dwrite.IFactory, rt: *d2d1.IHwndRenderTarget) DrawingContext {
-        var ctx = DrawingContext{
-            .r = rt,
+    pub fn init(allocator: std.mem.Allocator, dw: *dwrite.IFactory) TextFormatManager {
+        const cache = allocator.create(AutoLruCache(ui.style.Font, *dwrite.ITextFormat, TEXT_FORMAT_CACHE_SIZE)) catch unreachable;
+        cache.* = AutoLruCache(ui.style.Font, *dwrite.ITextFormat, TEXT_FORMAT_CACHE_SIZE).init(allocator);
+        return .{
+            .cache = cache,
             .dw = dw,
-            .brushes = undefined,
-            .noto_normal_xs = createTextFormat(dw, noto, 12.0, .NORMAL),
-            .noto_normal_sm = createTextFormat(dw, noto, 14.0, .NORMAL),
-            .noto_normal_base = createTextFormat(dw, noto, 16.0, .NORMAL),
-            .noto_normal_lg = createTextFormat(dw, noto, 18.0, .NORMAL),
-            .noto_normal_xl = createTextFormat(dw, noto, 20.0, .NORMAL),
-            .noto_normal_2xl = createTextFormat(dw, noto, 24.0, .NORMAL),
-            .noto_normal_3xl = createTextFormat(dw, noto, 30.0, .NORMAL),
-            .noto_normal_4xl = createTextFormat(dw, noto, 36.0, .NORMAL),
-            .noto_normal_5xl = createTextFormat(dw, noto, 48.0, .NORMAL),
-            .noto_normal_6xl = createTextFormat(dw, noto, 60.0, .NORMAL),
-            .noto_normal_7xl = createTextFormat(dw, noto, 72.0, .NORMAL),
-            .noto_normal_8xl = createTextFormat(dw, noto, 96.0, .NORMAL),
-            .noto_normal_9xl = createTextFormat(dw, noto, 128.0, .NORMAL),
-            .noto_medium_xs = createTextFormat(dw, noto, 12.0, .MEDIUM),
-            .noto_medium_sm = createTextFormat(dw, noto, 14.0, .MEDIUM),
-            .noto_medium_base = createTextFormat(dw, noto, 16.0, .MEDIUM),
-            .noto_medium_lg = createTextFormat(dw, noto, 18.0, .MEDIUM),
-            .noto_medium_xl = createTextFormat(dw, noto, 20.0, .MEDIUM),
-            .noto_medium_2xl = createTextFormat(dw, noto, 24.0, .MEDIUM),
-            .noto_medium_3xl = createTextFormat(dw, noto, 30.0, .MEDIUM),
-            .noto_medium_4xl = createTextFormat(dw, noto, 36.0, .MEDIUM),
-            .noto_medium_5xl = createTextFormat(dw, noto, 48.0, .MEDIUM),
-            .noto_medium_6xl = createTextFormat(dw, noto, 60.0, .MEDIUM),
-            .noto_medium_7xl = createTextFormat(dw, noto, 72.0, .MEDIUM),
-            .noto_medium_8xl = createTextFormat(dw, noto, 96.0, .MEDIUM),
-            .noto_medium_9xl = createTextFormat(dw, noto, 128.0, .MEDIUM),
-            .noto_bold_xs = createTextFormat(dw, noto, 12.0, .BOLD),
-            .noto_bold_sm = createTextFormat(dw, noto, 14.0, .BOLD),
-            .noto_bold_base = createTextFormat(dw, noto, 16.0, .BOLD),
-            .noto_bold_lg = createTextFormat(dw, noto, 18.0, .BOLD),
-            .noto_bold_xl = createTextFormat(dw, noto, 20.0, .BOLD),
-            .noto_bold_2xl = createTextFormat(dw, noto, 24.0, .BOLD),
-            .noto_bold_3xl = createTextFormat(dw, noto, 30.0, .BOLD),
-            .noto_bold_4xl = createTextFormat(dw, noto, 36.0, .BOLD),
-            .noto_bold_5xl = createTextFormat(dw, noto, 48.0, .BOLD),
-            .noto_bold_6xl = createTextFormat(dw, noto, 60.0, .BOLD),
-            .noto_bold_7xl = createTextFormat(dw, noto, 72.0, .BOLD),
-            .noto_bold_8xl = createTextFormat(dw, noto, 96.0, .BOLD),
-            .noto_bold_9xl = createTextFormat(dw, noto, 128.0, .BOLD),
-        };
-        ctx.brushes = BrushManager.init(allocator, rt);
-        return ctx;
-    }
-
-    pub fn getTextFormat(this: *const DrawingContext, font: ui.style.Font) ?*dwrite.ITextFormat {
-        return switch (font.weight) {
-            .Normal => switch (font.size) {
-                .XS => this.noto_normal_xs,
-                .SM => this.noto_normal_sm,
-                .Base => this.noto_normal_base,
-                .LG => this.noto_normal_lg,
-                .XL => this.noto_normal_xl,
-                .XL2 => this.noto_normal_2xl,
-                .XL3 => this.noto_normal_3xl,
-                .XL4 => this.noto_normal_4xl,
-                .XL5 => this.noto_normal_5xl,
-                .XL6 => this.noto_normal_6xl,
-                .XL7 => this.noto_normal_7xl,
-                .XL8 => this.noto_normal_8xl,
-                .XL9 => this.noto_normal_9xl,
-            },
-            .Medium => switch (font.size) {
-                .XS => this.noto_medium_xs,
-                .SM => this.noto_medium_sm,
-                .Base => this.noto_medium_base,
-                .LG => this.noto_medium_lg,
-                .XL => this.noto_medium_xl,
-                .XL2 => this.noto_medium_2xl,
-                .XL3 => this.noto_medium_3xl,
-                .XL4 => this.noto_medium_4xl,
-                .XL5 => this.noto_medium_5xl,
-                .XL6 => this.noto_medium_6xl,
-                .XL7 => this.noto_medium_7xl,
-                .XL8 => this.noto_medium_8xl,
-                .XL9 => this.noto_medium_9xl,
-            },
-            .Bold => switch (font.size) {
-                .XS => this.noto_bold_xs,
-                .SM => this.noto_bold_sm,
-                .Base => this.noto_bold_base,
-                .LG => this.noto_bold_lg,
-                .XL => this.noto_bold_xl,
-                .XL2 => this.noto_bold_2xl,
-                .XL3 => this.noto_bold_3xl,
-                .XL4 => this.noto_bold_4xl,
-                .XL5 => this.noto_bold_5xl,
-                .XL6 => this.noto_bold_6xl,
-                .XL7 => this.noto_bold_7xl,
-                .XL8 => this.noto_bold_8xl,
-                .XL9 => this.noto_bold_9xl,
-            },
         };
     }
 
-    pub fn deinit(this: *DrawingContext) void {
-        _ = this.brushes.deinit();
-        _ = this.noto_normal_xs.Release();
-        _ = this.noto_normal_sm.Release();
-        _ = this.noto_normal_base.Release();
-        _ = this.noto_normal_lg.Release();
-        _ = this.noto_normal_xl.Release();
-        _ = this.noto_normal_2xl.Release();
-        _ = this.noto_normal_3xl.Release();
-        _ = this.noto_normal_4xl.Release();
-        _ = this.noto_normal_5xl.Release();
-        _ = this.noto_normal_6xl.Release();
-        _ = this.noto_normal_7xl.Release();
-        _ = this.noto_normal_8xl.Release();
-        _ = this.noto_normal_9xl.Release();
-        _ = this.noto_medium_xs.Release();
-        _ = this.noto_medium_sm.Release();
-        _ = this.noto_medium_base.Release();
-        _ = this.noto_medium_lg.Release();
-        _ = this.noto_medium_xl.Release();
-        _ = this.noto_medium_2xl.Release();
-        _ = this.noto_medium_3xl.Release();
-        _ = this.noto_medium_4xl.Release();
-        _ = this.noto_medium_5xl.Release();
-        _ = this.noto_medium_6xl.Release();
-        _ = this.noto_medium_7xl.Release();
-        _ = this.noto_medium_8xl.Release();
-        _ = this.noto_medium_9xl.Release();
-        _ = this.noto_bold_xs.Release();
-        _ = this.noto_bold_sm.Release();
-        _ = this.noto_bold_base.Release();
-        _ = this.noto_bold_lg.Release();
-        _ = this.noto_bold_xl.Release();
-        _ = this.noto_bold_2xl.Release();
-        _ = this.noto_bold_3xl.Release();
-        _ = this.noto_bold_4xl.Release();
-        _ = this.noto_bold_5xl.Release();
-        _ = this.noto_bold_6xl.Release();
-        _ = this.noto_bold_7xl.Release();
-        _ = this.noto_bold_8xl.Release();
-        _ = this.noto_bold_9xl.Release();
-        _ = this.r.Release();
+    pub fn get(self: *TextFormatManager, key: ui.style.Font) *dwrite.ITextFormat {
+        if (self.cache.get(key)) |text_format| {
+            return text_format;
+        }
+        const text_format = createTextFormat(self.dw, key);
+        if (self.cache.put(key, text_format) catch unreachable) |evicted| {
+            _ = evicted.Release();
+        }
+        return text_format;
+    }
+
+    pub fn deinit(self: *TextFormatManager) void {
+        var iter = self.cache.map.iterator();
+        while (iter.next()) |entry| {
+            const text_format = entry.value_ptr.value;
+            _ = text_format.Release();
+        }
+        self.cache.deinit();
     }
 };
 
-fn createBrush(render_target: *d2d1.IHwndRenderTarget, comptime hex: []const u8) *d2d1.ISolidColorBrush {
+fn createBrush(render_target: *d2d1.IHwndRenderTarget, hex: []const u8) *d2d1.ISolidColorBrush {
     var brush: *d2d1.ISolidColorBrush = undefined;
-    const color = comptime hexToColor(hex);
+    const color = hexToColor(hex);
     w32.vhr(render_target.CreateSolidColorBrush(&color, null, @ptrCast(&brush)));
     return brush;
 }
@@ -253,15 +122,41 @@ fn hexToColor(hex: []const u8) d2d1.COLOR_F {
     return d2d1.COLOR_F{ .r = r, .g = g, .b = b, .a = 1.0 };
 }
 
-fn createTextFormat(dwrite_factory: *dwrite.IFactory, font: [:0]const u16, size: f32, weight: dwrite.FONT_WEIGHT) *dwrite.ITextFormat {
+fn createTextFormat(dwrite_factory: *dwrite.IFactory, font: ui.style.Font) *dwrite.ITextFormat {
+    const dwrite_font = switch (font.family) {
+        .NotoSansJP => L("Noto Sans JP"),
+        .SegoeUI => L("Segoe UI"),
+    };
+    const dwrite_weight: dwrite.FONT_WEIGHT = switch (font.weight) {
+        .Normal => .NORMAL,
+        .Medium => .MEDIUM,
+        .Semibold => .SEMI_BOLD,
+        .Bold => .BOLD,
+    };
+    const dwrite_size: f32 = switch (font.size) {
+        .xs => 12.0,
+        .sm => 14.0,
+        .Base => 16.0,
+        .lg => 18.0,
+        .xl => 20.0,
+        .xl2 => 24.0,
+        .xl3 => 28.0,
+        .xl4 => 32.0,
+        .xl5 => 36.0,
+        .xl6 => 40.0,
+        .xl7 => 44.0,
+        .xl8 => 48.0,
+        .xl9 => 52.0,
+    };
+
     var text_format: *dwrite.ITextFormat = undefined;
     w32.vhr(dwrite_factory.CreateTextFormat(
-        font,
+        dwrite_font,
         null,
-        weight,
+        dwrite_weight,
         .NORMAL,
         .NORMAL,
-        size,
+        dwrite_size,
         L("en-us"),
         @ptrCast(&text_format),
     ));

@@ -55,7 +55,7 @@ pub const Widget = union(enum) {
                     error.OutOfMemory => @panic("Out of memory"),
                 };
 
-                const text_format = ctx.getTextFormat(t.style.font) orelse ctx.noto_normal_sm;
+                const text_format = ctx.fonts.get(t.style.font);
                 vhr(text_format.SetTextAlignment(.CENTER));
                 vhr(text_format.SetParagraphAlignment(.CENTER));
 
@@ -161,7 +161,7 @@ pub const Text = struct {
             error.OutOfMemory => @panic("Out of memory"),
         };
 
-        const text_format = ctx.getTextFormat(self.style.font) orelse ctx.noto_normal_sm;
+        const text_format = ctx.fonts.get(self.style.font);
         vhr(text_format.SetTextAlignment(.CENTER));
         vhr(text_format.SetParagraphAlignment(.CENTER));
 

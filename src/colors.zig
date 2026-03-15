@@ -1,3 +1,5 @@
+pub const white = "#ffffff";
+pub const black = "#000000";
 pub const slate50 = "#f8fafc";
 pub const slate100 = "#f1f5f9";
 pub const slate200 = "#e2e8f0";
