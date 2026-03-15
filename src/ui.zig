@@ -90,7 +90,8 @@ pub const Widget = union(enum) {
                 for (v.children) |*child| {
                     switch (child.height()) {
                         .Flex => |flex| total_flex += flex,
-                        else => fixed_height += child.measure(allocator, ctx, available).height, // + v.gap,
+                        .Fixed => |px| fixed_height += px,
+                        .Hug => fixed_height += child.measure(allocator, ctx, available).height, // + v.gap,
                     }
                 }
 
