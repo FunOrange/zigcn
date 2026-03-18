@@ -157,34 +157,34 @@ const WindowContext = struct {
 
         var ctx = drawing.DrawingContext.init(allocator, dwrite_factory, d2d_hwnd_target);
 
-        var children = try allocator.alloc(ui.Widget, 3);
-        children[0] = .{ .text = .{
-            .text = "Current time: ",
-            .height = .{ .Flex = 2.0 },
-            .style = .{
-                .text_color = ctx.brushes.get(colors.white),
-                .font = .{ .family = .SegoeUI, .size = .xl },
-            },
-        } };
-        children[1] = .{ .text = .{
-            .text = "なんでやねん！",
-            .height = .{ .Flex = 4.0 },
-            .style = .{
-                .text_color = ctx.brushes.get(colors.slate50),
-                .font = .{ .size = .xl },
-            },
-        } };
-        children[2] = .{ .text = .{
-            .text = "bottom text",
-            .style = .{
-                .text_color = ctx.brushes.get(colors.white),
-                .font = .{ .family = .SegoeUI, .size = .xl },
-            },
-        } };
         const ui_root = ui.Widget{
             .vstack = .{
                 .style = .{ .background_color = ctx.brushes.get(colors.slate800) },
-                .children = children,
+                .children = try allocator.dupe(ui.Widget, &[_]ui.Widget{
+                    .{ .text = .{
+                        .text = "Current time: ",
+                        .height = .{ .Flex = 2.0 },
+                        .style = .{
+                            .text_color = ctx.brushes.get(colors.white),
+                            .font = .{ .family = .SegoeUI, .size = .xl },
+                        },
+                    } },
+                    .{ .text = .{
+                        .text = "なんでやねん！",
+                        .height = .{ .Flex = 4.0 },
+                        .style = .{
+                            .text_color = ctx.brushes.get(colors.slate50),
+                            .font = .{ .size = .xl },
+                        },
+                    } },
+                    .{ .text = .{
+                        .text = "bottom text",
+                        .style = .{
+                            .text_color = ctx.brushes.get(colors.white),
+                            .font = .{ .family = .SegoeUI, .size = .xl },
+                        },
+                    } },
+                }),
             },
         };
 
@@ -201,7 +201,7 @@ const WindowContext = struct {
             .ui = .{
                 .root = ui_root,
                 .refs = .{
-                    .current_time_text = &children[0].text,
+                    .current_time_text = &ui_root.vstack.children[0].text,
                 },
             },
         };
